@@ -1,22 +1,55 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Epic Poetry Cafe Management API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: users
+    description: User management
+  - name: categories
+    description: Category masters
+  - name: uom
+    description: Units of measure
+  - name: config
+    description: System configuration
+  - name: vendors
+    description: Vendor management
+  - name: ingredients
+    description: Ingredient management
+  - name: menuItems
+    description: Menu item & recipe management
+  - name: purchases
+    description: Purchase management
+  - name: expenses
+    description: Expense management
+  - name: inventory
+    description: Inventory & stock
+  - name: sales
+    description: Sales management
+  - name: waste
+    description: Waste management
+  - name: trials
+    description: Trial & R&D management
+  - name: dashboard
+    description: Dashboard analytics
+  - name: reports
+    description: Reports
+  - name: auditLogs
+    description: Audit logs
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +57,1402 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List users
+      responses:
+        "200":
+          description: Users list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{id}:
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /categories:
+    get:
+      operationId: listCategories
+      tags: [categories]
+      summary: List categories
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+    post:
+      operationId: createCategory
+      tags: [categories]
+      summary: Create category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoryRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+
+  /categories/{id}:
+    patch:
+      operationId: updateCategory
+      tags: [categories]
+      summary: Update category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoryRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+    delete:
+      operationId: deleteCategory
+      tags: [categories]
+      summary: Delete category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /uom:
+    get:
+      operationId: listUom
+      tags: [uom]
+      summary: List units of measure
+      responses:
+        "200":
+          description: UOMs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Uom"
+    post:
+      operationId: createUom
+      tags: [uom]
+      summary: Create UOM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUomRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Uom"
+
+  /uom/{id}:
+    patch:
+      operationId: updateUom
+      tags: [uom]
+      summary: Update UOM
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUomRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Uom"
+
+  /config:
+    get:
+      operationId: getConfig
+      tags: [config]
+      summary: Get system config
+      responses:
+        "200":
+          description: Config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemConfig"
+    patch:
+      operationId: updateConfig
+      tags: [config]
+      summary: Update system config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateConfigRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemConfig"
+
+  /vendors:
+    get:
+      operationId: listVendors
+      tags: [vendors]
+      summary: List vendors
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: categoryId
+          in: query
+          schema:
+            type: integer
+        - name: active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Vendors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vendor"
+    post:
+      operationId: createVendor
+      tags: [vendors]
+      summary: Create vendor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVendorRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vendor"
+
+  /vendors/{id}:
+    get:
+      operationId: getVendor
+      tags: [vendors]
+      summary: Get vendor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Vendor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vendor"
+    patch:
+      operationId: updateVendor
+      tags: [vendors]
+      summary: Update vendor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVendorRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vendor"
+
+  /vendors/{id}/spend-summary:
+    get:
+      operationId: getVendorSpendSummary
+      tags: [vendors]
+      summary: Vendor spend summary
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Spend summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorSpendSummary"
+
+  /ingredients:
+    get:
+      operationId: listIngredients
+      tags: [ingredients]
+      summary: List ingredients
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: categoryId
+          in: query
+          schema:
+            type: integer
+        - name: active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Ingredients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Ingredient"
+    post:
+      operationId: createIngredient
+      tags: [ingredients]
+      summary: Create ingredient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIngredientRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ingredient"
+
+  /ingredients/{id}:
+    get:
+      operationId: getIngredient
+      tags: [ingredients]
+      summary: Get ingredient
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Ingredient detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ingredient"
+    patch:
+      operationId: updateIngredient
+      tags: [ingredients]
+      summary: Update ingredient
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIngredientRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ingredient"
+
+  /ingredients/{id}/vendor-mappings:
+    get:
+      operationId: listIngredientVendorMappings
+      tags: [ingredients]
+      summary: List vendor mappings for ingredient
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Vendor mappings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IngredientVendorMapping"
+    post:
+      operationId: createIngredientVendorMapping
+      tags: [ingredients]
+      summary: Add vendor mapping
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIngredientVendorMappingRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngredientVendorMapping"
+
+  /menu-items:
+    get:
+      operationId: listMenuItems
+      tags: [menuItems]
+      summary: List menu items
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: categoryId
+          in: query
+          schema:
+            type: integer
+        - name: active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Menu items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MenuItem"
+    post:
+      operationId: createMenuItem
+      tags: [menuItems]
+      summary: Create menu item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMenuItemRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+
+  /menu-items/{id}:
+    get:
+      operationId: getMenuItem
+      tags: [menuItems]
+      summary: Get menu item with recipe
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Menu item detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItemDetail"
+    patch:
+      operationId: updateMenuItem
+      tags: [menuItems]
+      summary: Update menu item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMenuItemRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+
+  /menu-items/{id}/recipe:
+    get:
+      operationId: getRecipe
+      tags: [menuItems]
+      summary: Get recipe lines
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Recipe lines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecipeLine"
+    put:
+      operationId: saveRecipe
+      tags: [menuItems]
+      summary: Save recipe (replace all lines)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveRecipeRequest"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecipeLine"
+
+  /menu-items/{id}/costing:
+    get:
+      operationId: getMenuItemCosting
+      tags: [menuItems]
+      summary: Get item cost breakdown
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Costing breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItemCosting"
+
+  /purchases:
+    get:
+      operationId: listPurchases
+      tags: [purchases]
+      summary: List purchases
+      parameters:
+        - name: vendorId
+          in: query
+          schema:
+            type: integer
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Purchases
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Purchase"
+    post:
+      operationId: createPurchase
+      tags: [purchases]
+      summary: Create purchase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePurchaseRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchase"
+
+  /purchases/{id}:
+    get:
+      operationId: getPurchase
+      tags: [purchases]
+      summary: Get purchase detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Purchase detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseDetail"
+
+  /expenses:
+    get:
+      operationId: listExpenses
+      tags: [expenses]
+      summary: List expenses
+      parameters:
+        - name: categoryId
+          in: query
+          schema:
+            type: integer
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Expenses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Expense"
+    post:
+      operationId: createExpense
+      tags: [expenses]
+      summary: Create expense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExpenseRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+
+  /expenses/{id}:
+    get:
+      operationId: getExpense
+      tags: [expenses]
+      summary: Get expense
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+    patch:
+      operationId: updateExpense
+      tags: [expenses]
+      summary: Update expense
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExpenseRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+
+  /inventory/stock-overview:
+    get:
+      operationId: getStockOverview
+      tags: [inventory]
+      summary: Stock overview
+      responses:
+        "200":
+          description: Stock overview
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockOverviewItem"
+
+  /inventory/stock-snapshots:
+    get:
+      operationId: listStockSnapshots
+      tags: [inventory]
+      summary: List stock snapshots
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockSnapshot"
+    post:
+      operationId: saveStockSnapshot
+      tags: [inventory]
+      summary: Save daily stock snapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveStockSnapshotRequest"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockSnapshot"
+
+  /inventory/adjustments:
+    post:
+      operationId: createStockAdjustment
+      tags: [inventory]
+      summary: Create stock adjustment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStockAdjustmentRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockAdjustment"
+
+  /sales:
+    get:
+      operationId: listSales
+      tags: [sales]
+      summary: List sales entries
+      parameters:
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sales
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SalesEntry"
+    post:
+      operationId: createSalesEntry
+      tags: [sales]
+      summary: Create sales entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSalesEntryRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesEntry"
+
+  /sales/{id}:
+    patch:
+      operationId: updateSalesEntry
+      tags: [sales]
+      summary: Update sales entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSalesEntryRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesEntry"
+    delete:
+      operationId: deleteSalesEntry
+      tags: [sales]
+      summary: Delete sales entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /sales/daily-summary:
+    get:
+      operationId: getDailySalesSummary
+      tags: [sales]
+      summary: Daily sales summary
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailySalesSummary"
+
+  /waste:
+    get:
+      operationId: listWasteEntries
+      tags: [waste]
+      summary: List waste entries
+      parameters:
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+        - name: categoryId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Waste entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WasteEntry"
+    post:
+      operationId: createWasteEntry
+      tags: [waste]
+      summary: Create waste entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWasteEntryRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WasteEntry"
+
+  /waste/{id}:
+    patch:
+      operationId: updateWasteEntry
+      tags: [waste]
+      summary: Update waste entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWasteEntryRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WasteEntry"
+
+  /waste/summary:
+    get:
+      operationId: getWasteSummary
+      tags: [waste]
+      summary: Waste analytics summary
+      parameters:
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Waste summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WasteSummary"
+
+  /trials:
+    get:
+      operationId: listTrials
+      tags: [trials]
+      summary: List trials
+      responses:
+        "200":
+          description: Trials
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Trial"
+    post:
+      operationId: createTrial
+      tags: [trials]
+      summary: Create trial
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTrialRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trial"
+
+  /trials/{id}:
+    get:
+      operationId: getTrial
+      tags: [trials]
+      summary: Get trial detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Trial detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrialDetail"
+    patch:
+      operationId: updateTrial
+      tags: [trials]
+      summary: Update trial
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTrialRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trial"
+
+  /trials/{id}/versions:
+    post:
+      operationId: createTrialVersion
+      tags: [trials]
+      summary: Create trial version
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTrialVersionRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrialVersion"
+
+  /trials/{trialId}/versions/{versionId}/convert:
+    post:
+      operationId: convertTrialToMenuItem
+      tags: [trials]
+      summary: Convert approved trial to menu item recipe
+      parameters:
+        - name: trialId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: versionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Converted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MenuItem"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Owner dashboard summary
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Dashboard
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/profitability:
+    get:
+      operationId: getItemProfitability
+      tags: [dashboard]
+      summary: Item profitability
+      parameters:
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Profitability
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ItemProfitability"
+
+  /dashboard/daily-pl:
+    get:
+      operationId: getDailyPL
+      tags: [dashboard]
+      summary: Daily P&L
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Daily P&L
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyPL"
+
+  /dashboard/consumption-variance:
+    get:
+      operationId: getConsumptionVariance
+      tags: [dashboard]
+      summary: Ingredient consumption variance
+      parameters:
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Variance
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConsumptionVariance"
+
+  /dashboard/sales-trend:
+    get:
+      operationId: getSalesTrend
+      tags: [dashboard]
+      summary: Sales trend
+      parameters:
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sales trend
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrendDataPoint"
+
+  /dashboard/expense-breakdown:
+    get:
+      operationId: getExpenseBreakdown
+      tags: [dashboard]
+      summary: Expense breakdown by category
+      parameters:
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Expense breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoryBreakdown"
+
+  /dashboard/vendor-spend:
+    get:
+      operationId: getVendorSpendAnalytics
+      tags: [dashboard]
+      summary: Vendor spend analytics
+      parameters:
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Vendor spend
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VendorSpendItem"
+
+  /reports/export:
+    get:
+      operationId: exportReport
+      tags: [reports]
+      summary: Export report as CSV
+      parameters:
+        - name: reportType
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /audit-logs:
+    get:
+      operationId: listAuditLogs
+      tags: [auditLogs]
+      summary: List audit logs
+      parameters:
+        - name: module
+          in: query
+          schema:
+            type: string
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+        - name: toDate
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogList"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +1463,1633 @@ components:
       required:
         - status
 
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+      required:
+        - token
+        - user
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - username
+        - fullName
+        - role
+        - active
+
+    CreateUserRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        active:
+          type: boolean
+      required:
+        - username
+        - password
+        - fullName
+        - role
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        fullName:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        active:
+          type: boolean
+        password:
+          type: string
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+        description:
+          type: ["string", "null"]
+        active:
+          type: boolean
+        sortOrder:
+          type: integer
+      required:
+        - id
+        - name
+        - type
+        - active
+
+    CreateCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        description:
+          type: string
+        active:
+          type: boolean
+        sortOrder:
+          type: integer
+      required:
+        - name
+        - type
+
+    Uom:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        abbreviation:
+          type: string
+        baseUomId:
+          type: ["integer", "null"]
+        conversionFactor:
+          type: number
+        active:
+          type: boolean
+      required:
+        - id
+        - name
+        - abbreviation
+        - active
+
+    CreateUomRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        abbreviation:
+          type: string
+        baseUomId:
+          type: integer
+        conversionFactor:
+          type: number
+        active:
+          type: boolean
+      required:
+        - name
+        - abbreviation
+
+    SystemConfig:
+      type: object
+      properties:
+        id:
+          type: integer
+        costingMethod:
+          type: string
+        currency:
+          type: string
+        decimalPrecision:
+          type: integer
+        businessDayCloseTime:
+          type: string
+        wasteThresholdPercent:
+          type: number
+        lowStockAlertDays:
+          type: integer
+        dailyAllocationMethod:
+          type: string
+        taxRate:
+          type: number
+      required:
+        - id
+        - costingMethod
+        - currency
+
+    UpdateConfigRequest:
+      type: object
+      properties:
+        costingMethod:
+          type: string
+        currency:
+          type: string
+        decimalPrecision:
+          type: integer
+        businessDayCloseTime:
+          type: string
+        wasteThresholdPercent:
+          type: number
+        lowStockAlertDays:
+          type: integer
+        dailyAllocationMethod:
+          type: string
+        taxRate:
+          type: number
+
+    Vendor:
+      type: object
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        name:
+          type: string
+        categoryId:
+          type: ["integer", "null"]
+        categoryName:
+          type: ["string", "null"]
+        contactPerson:
+          type: ["string", "null"]
+        mobile:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        gstNumber:
+          type: ["string", "null"]
+        paymentTerms:
+          type: ["string", "null"]
+        creditDays:
+          type: ["integer", "null"]
+        preferred:
+          type: boolean
+        active:
+          type: boolean
+        remarks:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - code
+        - name
+        - preferred
+        - active
+
+    CreateVendorRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        categoryId:
+          type: integer
+        contactPerson:
+          type: string
+        mobile:
+          type: string
+        email:
+          type: string
+        address:
+          type: string
+        gstNumber:
+          type: string
+        paymentTerms:
+          type: string
+        creditDays:
+          type: integer
+        preferred:
+          type: boolean
+        active:
+          type: boolean
+        remarks:
+          type: string
+      required:
+        - name
+
+    VendorSpendSummary:
+      type: object
+      properties:
+        vendorId:
+          type: integer
+        totalSpend:
+          type: number
+        purchaseCount:
+          type: integer
+        ingredientCount:
+          type: integer
+        lastPurchaseDate:
+          type: ["string", "null"]
+      required:
+        - vendorId
+        - totalSpend
+        - purchaseCount
+        - ingredientCount
+
+    Ingredient:
+      type: object
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        name:
+          type: string
+        categoryId:
+          type: ["integer", "null"]
+        categoryName:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        stockUom:
+          type: string
+        purchaseUom:
+          type: string
+        recipeUom:
+          type: string
+        conversionFactor:
+          type: number
+        currentCost:
+          type: number
+        latestCost:
+          type: number
+        weightedAvgCost:
+          type: number
+        reorderLevel:
+          type: number
+        currentStock:
+          type: number
+        perishable:
+          type: boolean
+        shelfLifeDays:
+          type: ["integer", "null"]
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - code
+        - name
+        - stockUom
+        - purchaseUom
+        - recipeUom
+        - conversionFactor
+        - currentCost
+        - latestCost
+        - weightedAvgCost
+        - currentStock
+        - active
+
+    CreateIngredientRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        categoryId:
+          type: integer
+        description:
+          type: string
+        stockUom:
+          type: string
+        purchaseUom:
+          type: string
+        recipeUom:
+          type: string
+        conversionFactor:
+          type: number
+        currentCost:
+          type: number
+        reorderLevel:
+          type: number
+        currentStock:
+          type: number
+        perishable:
+          type: boolean
+        shelfLifeDays:
+          type: integer
+        active:
+          type: boolean
+      required:
+        - name
+        - stockUom
+        - purchaseUom
+        - recipeUom
+
+    IngredientVendorMapping:
+      type: object
+      properties:
+        id:
+          type: integer
+        ingredientId:
+          type: integer
+        vendorId:
+          type: integer
+        vendorName:
+          type: string
+        vendorItemName:
+          type: ["string", "null"]
+        purchaseUom:
+          type: string
+        conversionFactor:
+          type: number
+        latestRate:
+          type: number
+        taxPercent:
+          type: number
+        landedCost:
+          type: number
+        leadTimeDays:
+          type: ["integer", "null"]
+        minOrderQty:
+          type: ["number", "null"]
+        preferred:
+          type: boolean
+        active:
+          type: boolean
+      required:
+        - id
+        - ingredientId
+        - vendorId
+        - vendorName
+        - purchaseUom
+        - latestRate
+        - active
+
+    CreateIngredientVendorMappingRequest:
+      type: object
+      properties:
+        vendorId:
+          type: integer
+        vendorItemName:
+          type: string
+        purchaseUom:
+          type: string
+        conversionFactor:
+          type: number
+        latestRate:
+          type: number
+        taxPercent:
+          type: number
+        leadTimeDays:
+          type: integer
+        minOrderQty:
+          type: number
+        preferred:
+          type: boolean
+      required:
+        - vendorId
+        - purchaseUom
+        - latestRate
+
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        name:
+          type: string
+        categoryId:
+          type: ["integer", "null"]
+        categoryName:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        sellingPrice:
+          type: number
+        dineInPrice:
+          type: ["number", "null"]
+        takeawayPrice:
+          type: ["number", "null"]
+        deliveryPrice:
+          type: ["number", "null"]
+        productionCost:
+          type: number
+        margin:
+          type: number
+        marginPercent:
+          type: number
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - code
+        - name
+        - sellingPrice
+        - productionCost
+        - margin
+        - marginPercent
+        - active
+
+    MenuItemDetail:
+      type: object
+      properties:
+        item:
+          $ref: "#/components/schemas/MenuItem"
+        recipe:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipeLine"
+      required:
+        - item
+        - recipe
+
+    CreateMenuItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        categoryId:
+          type: integer
+        description:
+          type: string
+        sellingPrice:
+          type: number
+        dineInPrice:
+          type: number
+        takeawayPrice:
+          type: number
+        deliveryPrice:
+          type: number
+        active:
+          type: boolean
+      required:
+        - name
+        - sellingPrice
+
+    RecipeLine:
+      type: object
+      properties:
+        id:
+          type: integer
+        menuItemId:
+          type: integer
+        ingredientId:
+          type: integer
+        ingredientName:
+          type: string
+        quantity:
+          type: number
+        uom:
+          type: string
+        wastagePercent:
+          type: number
+        netQuantity:
+          type: number
+        costPerUnit:
+          type: number
+        lineCost:
+          type: number
+        mandatory:
+          type: boolean
+        stage:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - id
+        - menuItemId
+        - ingredientId
+        - ingredientName
+        - quantity
+        - uom
+        - netQuantity
+        - lineCost
+        - mandatory
+
+    SaveRecipeRequest:
+      type: object
+      properties:
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecipeLineInput"
+      required:
+        - lines
+
+    RecipeLineInput:
+      type: object
+      properties:
+        ingredientId:
+          type: integer
+        quantity:
+          type: number
+        uom:
+          type: string
+        wastagePercent:
+          type: number
+        mandatory:
+          type: boolean
+        stage:
+          type: string
+        notes:
+          type: string
+      required:
+        - ingredientId
+        - quantity
+        - uom
+
+    MenuItemCosting:
+      type: object
+      properties:
+        menuItemId:
+          type: integer
+        itemName:
+          type: string
+        sellingPrice:
+          type: number
+        ingredientCost:
+          type: number
+        packagingCost:
+          type: number
+        totalProductionCost:
+          type: number
+        margin:
+          type: number
+        marginPercent:
+          type: number
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/CostingLine"
+      required:
+        - menuItemId
+        - itemName
+        - sellingPrice
+        - ingredientCost
+        - totalProductionCost
+        - margin
+        - marginPercent
+        - lines
+
+    CostingLine:
+      type: object
+      properties:
+        ingredientId:
+          type: integer
+        ingredientName:
+          type: string
+        quantity:
+          type: number
+        uom:
+          type: string
+        costPerUnit:
+          type: number
+        lineCost:
+          type: number
+      required:
+        - ingredientId
+        - ingredientName
+        - quantity
+        - lineCost
+
+    Purchase:
+      type: object
+      properties:
+        id:
+          type: integer
+        purchaseNumber:
+          type: string
+        purchaseDate:
+          type: string
+        vendorId:
+          type: integer
+        vendorName:
+          type: string
+        invoiceNumber:
+          type: ["string", "null"]
+        paymentMode:
+          type: ["string", "null"]
+        paymentStatus:
+          type: string
+        totalAmount:
+          type: number
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - purchaseNumber
+        - purchaseDate
+        - vendorId
+        - vendorName
+        - paymentStatus
+        - totalAmount
+
+    PurchaseDetail:
+      type: object
+      properties:
+        purchase:
+          $ref: "#/components/schemas/Purchase"
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/PurchaseLine"
+      required:
+        - purchase
+        - lines
+
+    PurchaseLine:
+      type: object
+      properties:
+        id:
+          type: integer
+        purchaseId:
+          type: integer
+        ingredientId:
+          type: integer
+        ingredientName:
+          type: string
+        quantity:
+          type: number
+        purchaseUom:
+          type: string
+        unitRate:
+          type: number
+        taxPercent:
+          type: number
+        lineTotal:
+          type: number
+      required:
+        - id
+        - purchaseId
+        - ingredientId
+        - ingredientName
+        - quantity
+        - purchaseUom
+        - unitRate
+        - lineTotal
+
+    CreatePurchaseRequest:
+      type: object
+      properties:
+        purchaseDate:
+          type: string
+        vendorId:
+          type: integer
+        invoiceNumber:
+          type: string
+        paymentMode:
+          type: string
+        paymentStatus:
+          type: string
+        notes:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/PurchaseLineInput"
+      required:
+        - purchaseDate
+        - vendorId
+        - lines
+
+    PurchaseLineInput:
+      type: object
+      properties:
+        ingredientId:
+          type: integer
+        quantity:
+          type: number
+        purchaseUom:
+          type: string
+        unitRate:
+          type: number
+        taxPercent:
+          type: number
+      required:
+        - ingredientId
+        - quantity
+        - unitRate
+
+    Expense:
+      type: object
+      properties:
+        id:
+          type: integer
+        expenseNumber:
+          type: string
+        expenseDate:
+          type: string
+        categoryId:
+          type: ["integer", "null"]
+        categoryName:
+          type: ["string", "null"]
+        vendorId:
+          type: ["integer", "null"]
+        vendorName:
+          type: ["string", "null"]
+        amount:
+          type: number
+        taxAmount:
+          type: number
+        totalAmount:
+          type: number
+        paymentMode:
+          type: ["string", "null"]
+        paidBy:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        costType:
+          type: string
+        recurring:
+          type: boolean
+        recurringFrequency:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - expenseNumber
+        - expenseDate
+        - amount
+        - totalAmount
+        - costType
+
+    CreateExpenseRequest:
+      type: object
+      properties:
+        expenseDate:
+          type: string
+        categoryId:
+          type: integer
+        vendorId:
+          type: integer
+        amount:
+          type: number
+        taxAmount:
+          type: number
+        paymentMode:
+          type: string
+        paidBy:
+          type: string
+        description:
+          type: string
+        costType:
+          type: string
+        recurring:
+          type: boolean
+        recurringFrequency:
+          type: string
+      required:
+        - expenseDate
+        - amount
+        - costType
+
+    StockOverviewItem:
+      type: object
+      properties:
+        ingredientId:
+          type: integer
+        ingredientName:
+          type: string
+        currentStock:
+          type: number
+        stockUom:
+          type: string
+        reorderLevel:
+          type: number
+        stockValue:
+          type: number
+        lowStock:
+          type: boolean
+        lastPurchaseDate:
+          type: ["string", "null"]
+      required:
+        - ingredientId
+        - ingredientName
+        - currentStock
+        - stockUom
+        - reorderLevel
+        - stockValue
+        - lowStock
+
+    StockSnapshot:
+      type: object
+      properties:
+        id:
+          type: integer
+        snapshotDate:
+          type: string
+        ingredientId:
+          type: integer
+        ingredientName:
+          type: string
+        openingQty:
+          type: number
+        inwardQty:
+          type: number
+        consumedQty:
+          type: number
+        wasteQty:
+          type: number
+        trialQty:
+          type: number
+        closingQty:
+          type: number
+        stockValue:
+          type: number
+      required:
+        - id
+        - snapshotDate
+        - ingredientId
+        - ingredientName
+        - openingQty
+        - closingQty
+
+    SaveStockSnapshotRequest:
+      type: object
+      properties:
+        snapshotDate:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/StockSnapshotInput"
+      required:
+        - snapshotDate
+        - items
+
+    StockSnapshotInput:
+      type: object
+      properties:
+        ingredientId:
+          type: integer
+        closingQty:
+          type: number
+      required:
+        - ingredientId
+        - closingQty
+
+    StockAdjustment:
+      type: object
+      properties:
+        id:
+          type: integer
+        ingredientId:
+          type: integer
+        adjustmentType:
+          type: string
+        quantity:
+          type: number
+        reason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - ingredientId
+        - adjustmentType
+        - quantity
+        - reason
+
+    CreateStockAdjustmentRequest:
+      type: object
+      properties:
+        ingredientId:
+          type: integer
+        adjustmentType:
+          type: string
+        quantity:
+          type: number
+        reason:
+          type: string
+      required:
+        - ingredientId
+        - adjustmentType
+        - quantity
+        - reason
+
+    SalesEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        salesDate:
+          type: string
+        menuItemId:
+          type: integer
+        menuItemName:
+          type: string
+        quantity:
+          type: number
+        sellingPrice:
+          type: number
+        totalAmount:
+          type: number
+        discount:
+          type: number
+        channel:
+          type: string
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - salesDate
+        - menuItemId
+        - menuItemName
+        - quantity
+        - sellingPrice
+        - totalAmount
+        - channel
+
+    CreateSalesEntryRequest:
+      type: object
+      properties:
+        salesDate:
+          type: string
+        menuItemId:
+          type: integer
+        quantity:
+          type: number
+        sellingPrice:
+          type: number
+        discount:
+          type: number
+        channel:
+          type: string
+        notes:
+          type: string
+      required:
+        - salesDate
+        - menuItemId
+        - quantity
+        - sellingPrice
+        - channel
+
+    DailySalesSummary:
+      type: object
+      properties:
+        date:
+          type: string
+        totalSales:
+          type: number
+        totalQuantity:
+          type: number
+        itemCount:
+          type: integer
+        topItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopSellingItem"
+      required:
+        - date
+        - totalSales
+        - totalQuantity
+        - itemCount
+        - topItems
+
+    TopSellingItem:
+      type: object
+      properties:
+        menuItemId:
+          type: integer
+        menuItemName:
+          type: string
+        quantity:
+          type: number
+        revenue:
+          type: number
+      required:
+        - menuItemId
+        - menuItemName
+        - quantity
+        - revenue
+
+    WasteEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        wasteNumber:
+          type: string
+        wasteDate:
+          type: string
+        wasteType:
+          type: string
+        ingredientId:
+          type: ["integer", "null"]
+        ingredientName:
+          type: ["string", "null"]
+        menuItemId:
+          type: ["integer", "null"]
+        menuItemName:
+          type: ["string", "null"]
+        categoryId:
+          type: ["integer", "null"]
+        categoryName:
+          type: ["string", "null"]
+        reason:
+          type: ["string", "null"]
+        quantity:
+          type: number
+        uom:
+          type: string
+        costValue:
+          type: number
+        department:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        approvalStatus:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - wasteNumber
+        - wasteDate
+        - wasteType
+        - quantity
+        - uom
+        - costValue
+        - approvalStatus
+
+    CreateWasteEntryRequest:
+      type: object
+      properties:
+        wasteDate:
+          type: string
+        wasteType:
+          type: string
+        ingredientId:
+          type: integer
+        menuItemId:
+          type: integer
+        categoryId:
+          type: integer
+        reason:
+          type: string
+        quantity:
+          type: number
+        uom:
+          type: string
+        department:
+          type: string
+        notes:
+          type: string
+      required:
+        - wasteDate
+        - wasteType
+        - quantity
+        - uom
+
+    WasteSummary:
+      type: object
+      properties:
+        totalWasteValue:
+          type: number
+        totalWasteEntries:
+          type: integer
+        wasteByCategory:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryBreakdown"
+        wasteByReason:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryBreakdown"
+        wasteTrend:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrendDataPoint"
+      required:
+        - totalWasteValue
+        - totalWasteEntries
+        - wasteByCategory
+        - wasteByReason
+        - wasteTrend
+
+    Trial:
+      type: object
+      properties:
+        id:
+          type: integer
+        trialCode:
+          type: string
+        proposedItemName:
+          type: string
+        categoryId:
+          type: ["integer", "null"]
+        categoryName:
+          type: ["string", "null"]
+        targetCost:
+          type: ["number", "null"]
+        targetSellingPrice:
+          type: ["number", "null"]
+        status:
+          type: string
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - trialCode
+        - proposedItemName
+        - status
+
+    TrialDetail:
+      type: object
+      properties:
+        trial:
+          $ref: "#/components/schemas/Trial"
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrialVersion"
+      required:
+        - trial
+        - versions
+
+    CreateTrialRequest:
+      type: object
+      properties:
+        proposedItemName:
+          type: string
+        categoryId:
+          type: integer
+        targetCost:
+          type: number
+        targetSellingPrice:
+          type: number
+        notes:
+          type: string
+      required:
+        - proposedItemName
+
+    UpdateTrialRequest:
+      type: object
+      properties:
+        proposedItemName:
+          type: string
+        categoryId:
+          type: integer
+        targetCost:
+          type: number
+        targetSellingPrice:
+          type: number
+        status:
+          type: string
+        notes:
+          type: string
+
+    TrialVersion:
+      type: object
+      properties:
+        id:
+          type: integer
+        trialId:
+          type: integer
+        versionNumber:
+          type: integer
+        batchSize:
+          type: number
+        yieldQty:
+          type: number
+        yieldUom:
+          type: string
+        prepTime:
+          type: ["integer", "null"]
+        totalCost:
+          type: number
+        costPerUnit:
+          type: number
+        status:
+          type: string
+        tasteScore:
+          type: ["number", "null"]
+        appearanceScore:
+          type: ["number", "null"]
+        consistencyScore:
+          type: ["number", "null"]
+        notes:
+          type: ["string", "null"]
+        ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrialIngredientLine"
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - trialId
+        - versionNumber
+        - batchSize
+        - yieldQty
+        - yieldUom
+        - totalCost
+        - costPerUnit
+        - status
+        - ingredients
+
+    TrialIngredientLine:
+      type: object
+      properties:
+        ingredientId:
+          type: integer
+        ingredientName:
+          type: string
+        plannedQty:
+          type: number
+        actualQty:
+          type: number
+        uom:
+          type: string
+        wastageQty:
+          type: number
+        costPerUnit:
+          type: number
+        totalCost:
+          type: number
+      required:
+        - ingredientId
+        - ingredientName
+        - plannedQty
+        - actualQty
+        - uom
+        - totalCost
+
+    CreateTrialVersionRequest:
+      type: object
+      properties:
+        batchSize:
+          type: number
+        yieldQty:
+          type: number
+        yieldUom:
+          type: string
+        prepTime:
+          type: integer
+        status:
+          type: string
+        tasteScore:
+          type: number
+        appearanceScore:
+          type: number
+        consistencyScore:
+          type: number
+        notes:
+          type: string
+        ingredients:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrialIngredientInput"
+      required:
+        - batchSize
+        - yieldQty
+        - yieldUom
+        - ingredients
+
+    TrialIngredientInput:
+      type: object
+      properties:
+        ingredientId:
+          type: integer
+        plannedQty:
+          type: number
+        actualQty:
+          type: number
+        uom:
+          type: string
+        wastageQty:
+          type: number
+      required:
+        - ingredientId
+        - plannedQty
+        - actualQty
+        - uom
+
+    DashboardSummary:
+      type: object
+      properties:
+        todaySales:
+          type: number
+        todayExpenses:
+          type: number
+        todayWaste:
+          type: number
+        todayEstimatedProfit:
+          type: number
+        mtdSales:
+          type: number
+        mtdExpenses:
+          type: number
+        mtdWaste:
+          type: number
+        mtdProfit:
+          type: number
+        lowStockCount:
+          type: integer
+        pendingRecurringExpenses:
+          type: integer
+        topItemsByRevenue:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopSellingItem"
+        topItemsByProfit:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemProfitability"
+        topWasteItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryBreakdown"
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertItem"
+        insights:
+          type: array
+          items:
+            type: string
+      required:
+        - todaySales
+        - todayExpenses
+        - todayWaste
+        - todayEstimatedProfit
+        - mtdSales
+        - mtdExpenses
+        - mtdWaste
+        - mtdProfit
+        - lowStockCount
+        - topItemsByRevenue
+        - topItemsByProfit
+        - alerts
+        - insights
+
+    AlertItem:
+      type: object
+      properties:
+        type:
+          type: string
+        severity:
+          type: string
+        message:
+          type: string
+        relatedId:
+          type: ["integer", "null"]
+      required:
+        - type
+        - severity
+        - message
+
+    ItemProfitability:
+      type: object
+      properties:
+        menuItemId:
+          type: integer
+        menuItemName:
+          type: string
+        quantitySold:
+          type: number
+        revenue:
+          type: number
+        productionCost:
+          type: number
+        grossProfit:
+          type: number
+        marginPercent:
+          type: number
+      required:
+        - menuItemId
+        - menuItemName
+        - quantitySold
+        - revenue
+        - productionCost
+        - grossProfit
+        - marginPercent
+
+    DailyPL:
+      type: object
+      properties:
+        date:
+          type: string
+        totalSales:
+          type: number
+        materialCost:
+          type: number
+        wasteCost:
+          type: number
+        trialCost:
+          type: number
+        allocatedExpenses:
+          type: number
+        allocatedUtilities:
+          type: number
+        grossProfit:
+          type: number
+        operatingProfit:
+          type: number
+        grossMarginPercent:
+          type: number
+        operatingMarginPercent:
+          type: number
+      required:
+        - date
+        - totalSales
+        - materialCost
+        - wasteCost
+        - trialCost
+        - allocatedExpenses
+        - grossProfit
+        - operatingProfit
+
+    ConsumptionVariance:
+      type: object
+      properties:
+        ingredientId:
+          type: integer
+        ingredientName:
+          type: string
+        actualConsumed:
+          type: number
+        theoreticalConsumed:
+          type: number
+        variance:
+          type: number
+        variancePercent:
+          type: number
+        uom:
+          type: string
+      required:
+        - ingredientId
+        - ingredientName
+        - actualConsumed
+        - theoreticalConsumed
+        - variance
+        - variancePercent
+        - uom
+
+    TrendDataPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        value:
+          type: number
+        label:
+          type: ["string", "null"]
+      required:
+        - date
+        - value
+
+    CategoryBreakdown:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: number
+        count:
+          type: integer
+      required:
+        - name
+        - value
+
+    VendorSpendItem:
+      type: object
+      properties:
+        vendorId:
+          type: integer
+        vendorName:
+          type: string
+        totalSpend:
+          type: number
+        purchaseCount:
+          type: integer
+      required:
+        - vendorId
+        - vendorName
+        - totalSpend
+        - purchaseCount
+
+    AuditLogList:
+      type: object
+      properties:
+        total:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLogEntry"
+      required:
+        - total
+        - items
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        module:
+          type: string
+        recordId:
+          type: integer
+        action:
+          type: string
+        oldValue:
+          type: ["string", "null"]
+        newValue:
+          type: ["string", "null"]
+        changedBy:
+          type: ["string", "null"]
+        changedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - module
+        - recordId
+        - action
+        - changedAt

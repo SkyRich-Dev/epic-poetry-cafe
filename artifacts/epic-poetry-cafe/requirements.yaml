@@ -1,0 +1,18 @@
+packages:
+  "recharts": "Used for the dashboard analytics and trending charts"
+  "date-fns": "For formatting and manipulating dates across all modules"
+  "lucide-react": "For beautiful, consistent iconography"
+  "clsx": "Utility for conditionally joining classNames"
+  "tailwind-merge": "Utility to merge tailwind classes properly"
+
+images:
+  - path: "artifacts/epic-poetry-cafe/public/images/login-bg.png"
+    description: "A warm, aesthetic, cinematic photograph of an upscale cafe interior with wood accents, soft amber lighting, espresso machines, and a cozy atmosphere"
+    aspect_ratio: "16:9"
+  - path: "artifacts/epic-poetry-cafe/public/images/logo.png"
+    description: "A minimal, elegant flat vector logo for 'Epic Poetry Cafe' featuring a subtle abstract coffee cup crossed with a fountain pen in warm earth tones on a transparent background"
+    aspect_ratio: "1:1"
+
+notes:
+  - The customFetch in @workspace/api-client-react will use standard fetch. Auth context manages token.
+  - Assume the backend API runs at /api

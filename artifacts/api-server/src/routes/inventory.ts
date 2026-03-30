@@ -1,0 +1,114 @@
+import { Router, type IRouter } from "express";
+import { eq, and } from "drizzle-orm";
+import { db, ingredientsTable, stockSnapshotsTable, stockAdjustmentsTable, purchaseLinesTable, purchasesTable, wasteEntriesTable } from "@workspace/db";
+import { SaveStockSnapshotBody, CreateStockAdjustmentBody, ListStockSnapshotsQueryParams } from "@workspace/api-zod";
+import { authMiddleware } from "../lib/auth";
+import { createAuditLog } from "../lib/audit";
+
+const router: IRouter = Router();
+
+router.get("/inventory/stock-overview", async (_req, res): Promise<void> => {
+  const ingredients = await db.select().from(ingredientsTable).where(eq(ingredientsTable.active, true));
+  const overview = ingredients.map(ing => ({
+    ingredientId: ing.id,
+    ingredientName: ing.name,
+    currentStock: ing.currentStock,
+    stockUom: ing.stockUom,
+    reorderLevel: ing.reorderLevel,
+    stockValue: ing.currentStock * ing.weightedAvgCost,
+    lowStock: ing.currentStock <= ing.reorderLevel,
+    lastPurchaseDate: null,
+  }));
+  res.json(overview);
+});
+
+router.get("/inventory/stock-snapshots", async (req, res): Promise<void> => {
+  const query = ListStockSnapshotsQueryParams.safeParse(req.query);
+  let snapshots;
+  if (query.success && query.data.date) {
+    snapshots = await db
+      .select({
+        id: stockSnapshotsTable.id,
+        snapshotDate: stockSnapshotsTable.snapshotDate,
+        ingredientId: stockSnapshotsTable.ingredientId,
+        ingredientName: ingredientsTable.name,
+        openingQty: stockSnapshotsTable.openingQty,
+        inwardQty: stockSnapshotsTable.inwardQty,
+        consumedQty: stockSnapshotsTable.consumedQty,
+        wasteQty: stockSnapshotsTable.wasteQty,
+        trialQty: stockSnapshotsTable.trialQty,
+        closingQty: stockSnapshotsTable.closingQty,
+        stockValue: stockSnapshotsTable.stockValue,
+      })
+      .from(stockSnapshotsTable)
+      .leftJoin(ingredientsTable, eq(stockSnapshotsTable.ingredientId, ingredientsTable.id))
+      .where(eq(stockSnapshotsTable.snapshotDate, query.data.date));
+  } else {
+    snapshots = await db
+      .select({
+        id: stockSnapshotsTable.id,
+        snapshotDate: stockSnapshotsTable.snapshotDate,
+        ingredientId: stockSnapshotsTable.ingredientId,
+        ingredientName: ingredientsTable.name,
+        openingQty: stockSnapshotsTable.openingQty,
+        inwardQty: stockSnapshotsTable.inwardQty,
+        consumedQty: stockSnapshotsTable.consumedQty,
+        wasteQty: stockSnapshotsTable.wasteQty,
+        trialQty: stockSnapshotsTable.trialQty,
+        closingQty: stockSnapshotsTable.closingQty,
+        stockValue: stockSnapshotsTable.stockValue,
+      })
+      .from(stockSnapshotsTable)
+      .leftJoin(ingredientsTable, eq(stockSnapshotsTable.ingredientId, ingredientsTable.id));
+  }
+  res.json(snapshots);
+});
+
+router.post("/inventory/stock-snapshots", authMiddleware, async (req, res): Promise<void> => {
+  const parsed = SaveStockSnapshotBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  await db.delete(stockSnapshotsTable).where(eq(stockSnapshotsTable.snapshotDate, parsed.data.snapshotDate));
+
+  const results = [];
+  for (const item of parsed.data.items) {
+    const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, item.ingredientId));
+    if (!ing) continue;
+
+    const openingQty = ing.currentStock;
+    const [snapshot] = await db.insert(stockSnapshotsTable).values({
+      snapshotDate: parsed.data.snapshotDate,
+      ingredientId: item.ingredientId,
+      openingQty,
+      inwardQty: 0,
+      consumedQty: Math.max(0, openingQty - item.closingQty),
+      wasteQty: 0,
+      trialQty: 0,
+      closingQty: item.closingQty,
+      stockValue: item.closingQty * ing.weightedAvgCost,
+    }).returning();
+
+    await db.update(ingredientsTable).set({ currentStock: item.closingQty }).where(eq(ingredientsTable.id, item.ingredientId));
+
+    results.push({ ...snapshot, ingredientName: ing.name });
+  }
+
+  res.json(results);
+});
+
+router.post("/inventory/adjustments", authMiddleware, async (req, res): Promise<void> => {
+  const parsed = CreateStockAdjustmentBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, parsed.data.ingredientId));
+  if (!ing) { res.status(404).json({ error: "Ingredient not found" }); return; }
+
+  const qtyChange = parsed.data.adjustmentType === "increase" ? parsed.data.quantity : -parsed.data.quantity;
+  await db.update(ingredientsTable).set({ currentStock: ing.currentStock + qtyChange }).where(eq(ingredientsTable.id, parsed.data.ingredientId));
+
+  const [adj] = await db.insert(stockAdjustmentsTable).values(parsed.data).returning();
+  await createAuditLog("inventory", adj.id, "adjustment", null, adj);
+  res.status(201).json(adj);
+});
+
+export default router;

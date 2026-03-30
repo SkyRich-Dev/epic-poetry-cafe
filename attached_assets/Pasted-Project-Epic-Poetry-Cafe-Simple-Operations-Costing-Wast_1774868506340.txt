@@ -1,0 +1,1025 @@
+Project: Epic Poetry Cafe – Simple Operations, Costing, Waste, Trial/R&D, and Analytics System
+Build a production-ready full-stack web application for Epic Poetry Cafe using:
+Frontend: React JS with Vite, MUI, CSS
+Backend: Python Django + Django REST Framework
+Database: PostgreSQL
+Auth: JWT authentication
+Architecture: Clean modular architecture, scalable, secure, configurable
+UI Goal: Very simple daily-use interface with powerful analytics
+Primary Users: Owner, Manager, Store/Purchase User, Kitchen/Bar User, Accounts/Admin
+Design Goal: Minimal data entry, strong calculations, strong analytics, mobile/tablet friendly
+This system is for a single cafe outlet initially, but the architecture must be ready for multi-outlet expansion later without major redesign.
+1. CORE BUSINESS OBJECTIVE
+Build a simple but detailed cafe intelligence system that helps manage:
+purchases
+vendors
+inventory
+recipe/ingredient mapping
+menu costing
+daily expenses
+utilities
+salary allocation
+waste
+trial and R&D
+sales import/manual sales entry
+item-wise profitability
+vendor-wise analysis
+ingredient-level consumption analysis
+daily/monthly P&L analytics
+The system must be simple to use daily, but must generate deep analytics automatically.
+2. CRITICAL PRODUCT PRINCIPLES
+2.1 Simple UX
+Do not create ERP-like overcomplicated UI.
+All key activities must be possible in a few clicks.
+2.2 Detailed analytics
+Even if data entry is simple, backend calculation and analytics must be detailed and accurate.
+2.3 No hard-coded business values
+All categories, reasons, thresholds, and allocation logic must be configurable through admin/config modules.
+2.4 Auditability
+Every important create/update/delete action must be tracked.
+2.5 Real-world usability
+This system should actually work in a cafe environment, with fast entry screens and dashboard-first management.
+3. HIGH-LEVEL MODULES
+Build the application with the following modules:
+Authentication & Role Management
+Dashboard & Analytics
+Master Data Management
+Vendor Management
+Ingredient Management
+Menu Item & Recipe/BOM Management
+Purchase Management
+Expense Management
+Inventory & Stock Snapshot
+Sales Management
+Waste Management
+Trial & R&D Management
+Utility & Fixed Cost Management
+Profitability & Cost Engine
+Reports & Export
+Settings / Configurations
+Audit Logs / Activity Tracking
+4. USER ROLES
+Implement role-based access control.
+Roles:
+Super Admin
+Owner
+Manager
+Purchase/Store User
+Kitchen/Bar User
+Accounts User
+Viewer/Analyst
+Permissions
+Each module must support permission control for:
+view
+create
+edit
+approve
+delete
+export
+Use backend permission enforcement, not only frontend hiding.
+5. AUTHENTICATION
+Implement:
+JWT login
+refresh token flow
+secure password hashing
+forgot password flow
+password reset flow
+optional “remember me”
+account active/inactive control
+6. MASTER DATA MODULES
+Build separate master modules with CRUD APIs and UI.
+6.1 Category Masters
+Configurable categories for:
+ingredient categories
+menu item categories
+vendor categories
+purchase categories
+expense categories
+waste categories
+waste reasons
+utility types
+salary departments
+unit of measure
+trial status
+approval status
+payment modes
+6.2 UOM Master
+Support:
+litre, ml
+kg, gram
+unit, piece, slice
+box, packet, bottle
+Need conversion support:
+purchase UOM
+stock/base UOM
+recipe UOM
+Example:
+1 litre = 1000 ml
+1 kg = 1000 gram
+1 box = configurable number of pieces
+6.3 Configuration Master
+Need configurable:
+costing method
+default stock valuation logic
+default daily fixed-cost allocation logic
+waste thresholds
+trial approval thresholds
+dashboard date defaults
+alert thresholds
+tax settings
+currency settings
+decimal precision
+business day closing time
+7. VENDOR MANAGEMENT MODULE
+Create a detailed vendor management system.
+Vendor fields:
+vendor code
+vendor name
+vendor category
+contact person
+mobile number
+email
+address
+GST/tax number
+payment terms
+credit days
+preferred status
+remarks
+active/inactive
+Features:
+vendor CRUD
+vendor-wise ingredient mapping
+vendor-wise purchase history
+vendor-wise spend summary
+payable overview
+vendor rating fields (manual)
+multiple vendors for same ingredient
+preferred and alternate vendor tagging
+8. INGREDIENT MANAGEMENT MODULE
+Create ingredient master with detailed costing and stock fields.
+Ingredient fields:
+ingredient code
+ingredient name
+category
+description
+stock UOM
+purchase UOM
+recipe UOM
+conversion factor
+current standard cost
+latest cost
+weighted average cost
+reorder level
+opening stock
+opening stock value
+perishable yes/no
+shelf life days
+active/inactive
+image optional
+Ingredient-Vendor mapping
+Support mapping one ingredient to multiple vendors with:
+vendor
+vendor item name
+purchase UOM
+conversion factor
+latest rate
+tax percent
+landed cost
+lead time days
+minimum order quantity
+preferred vendor
+effective from
+effective to
+active status
+9. MENU ITEM & RECIPE/BOM MODULE
+This is one of the most important modules.
+Menu item fields:
+item code
+item name
+category
+description
+selling price
+dine-in price
+takeaway price
+delivery price
+active/inactive
+image optional
+Recipe/BOM mapping
+Each menu item must support many ingredients.
+For each recipe line store:
+menu item
+ingredient
+quantity required
+recipe UOM
+wastage percent
+net quantity required
+mandatory yes/no
+stage/preparation step
+notes
+System behavior
+allow easy add/remove/edit ingredient lines
+auto-calculate cost contribution line by line
+auto-show current cost per ingredient
+auto-calculate total item production cost
+show price vs cost vs margin
+support packaging/disposable ingredients as recipe ingredients
+support optional ingredient flag
+support sub-recipes later-ready design
+Recipe costing methods
+System should support configurable costing method:
+latest cost
+weighted average cost
+standard manually entered cost
+Default to weighted average or latest based on config.
+10. PURCHASE MANAGEMENT MODULE
+Keep the UI simple, but backend robust.
+Purchase header fields:
+purchase number auto-generated
+purchase date
+vendor
+category
+invoice number
+invoice date
+payment mode
+payment status
+due date
+notes
+attachment upload
+created by
+Purchase line fields:
+ingredient
+quantity
+purchase UOM
+conversion factor
+base quantity
+unit rate
+tax percent
+landed cost
+line total
+Purchase behavior
+purchase can update inventory
+purchase should update latest cost
+purchase should recalculate weighted average cost
+support non-stock expense purchase marking
+support direct expense tagging if needed
+support purchase return later-ready model
+validate duplicate invoice number warning per vendor
+Analytics
+vendor-wise purchase
+ingredient-wise purchase
+category-wise purchase
+date-wise purchase trend
+price variance trend
+11. EXPENSE MANAGEMENT MODULE
+This is separate from purchases.
+Track all direct operational costs:
+rent
+salary
+electricity
+water
+gas
+pest control
+maintenance
+repair
+marketing
+internet
+subscriptions
+petty cash
+miscellaneous
+Expense fields:
+expense number auto-generated
+expense date
+category
+subcategory optional
+vendor optional
+amount
+tax
+payment mode
+paid by
+description
+attachment
+recurring yes/no
+recurring frequency
+cost type (fixed/variable)
+allocation method
+remarks
+Features
+quick expense entry screen
+recurring expense templates
+monthly allocation support
+approval-ready design
+expense analytics by category
+12. INVENTORY & STOCK MODULE
+Keep this simple in UI, but smart in backend.
+Main features
+stock ledger
+opening stock
+stock inward from purchases
+stock adjustment
+stock waste deduction
+trial/R&D deduction
+daily closing stock snapshot
+stock valuation
+stock variance analysis
+Stock snapshot fields:
+date
+ingredient
+opening qty
+inward qty
+consumed qty
+waste qty
+trial qty
+closing qty
+stock value
+Core formulas
+consumed qty = opening + inward - closing - waste - trial
+actual stock valuation based on configured cost method
+UI requirement
+Do not build heavy warehouse UI.
+Create:
+key ingredient stock view
+daily stock snapshot entry
+stock overview dashboard
+low stock indicators
+near-expiry support placeholder if needed
+13. SALES MODULE
+Need support for:
+manual sales entry
+import-ready design for POS integration later
+item-wise quantity sold
+item-wise revenue
+sales date-wise analytics
+Sales entry methods
+Method 1: Daily summary item-wise sales entry
+Fields:
+date
+menu item
+quantity sold
+selling price used
+total sales value
+discount
+channel (dine-in/takeaway/delivery/direct)
+notes
+Method 2: CSV import
+Build CSV upload importer for item-wise sales.
+Sales analytics
+daily sales
+item-wise sales
+category-wise sales
+top selling items
+slow-selling items
+discount impact
+sales trend
+14. WASTE MANAGEMENT MODULE
+Need detailed waste management but UI must remain simple.
+Waste fields:
+waste entry number
+date and time
+type (ingredient/menu item)
+ingredient or menu item
+waste category
+waste reason
+quantity
+UOM
+cost auto-calculated
+department
+employee optional
+notes
+image optional
+approval status
+approved by
+created by
+Waste categories
+Configurable examples:
+production waste
+spoilage
+service waste
+handling damage
+overproduction
+expiry
+storage issue
+staff mistake
+pest damage
+packaging waste
+Waste logic
+if ingredient waste, deduct stock
+if menu item waste, calculate based on recipe cost
+auto-calculate waste value
+track daily, weekly, monthly waste
+compare waste % vs sales
+compare ingredient-wise waste trends
+Waste analytics
+waste by ingredient
+waste by item
+waste by reason
+waste by category
+waste by department
+waste as % of sales
+high waste alerts
+15. TRIAL & R&D MANAGEMENT MODULE
+Need simple trial management with analytics.
+Trial master fields:
+trial code auto-generated
+proposed item name
+category
+created by
+created date
+target cost
+target selling price
+status
+final selected version optional
+notes
+Trial version fields:
+trial
+version number
+batch size
+yield quantity
+yield UOM
+preparation time
+notes
+status (draft/tested/approved/rejected)
+Trial ingredient lines:
+ingredient
+planned qty
+actual qty
+UOM
+wastage qty
+cost per unit
+total cost
+Trial evaluation fields:
+taste score
+appearance score
+consistency score
+cost acceptability
+ease of preparation
+evaluation note
+evaluated by
+evaluation date
+Trial features
+multiple versions per trial
+compare versions
+auto-calculate batch cost
+auto-calculate per item cost
+track trial waste
+deduct stock as R&D consumption
+convert approved trial version into final menu recipe
+maintain version history
+16. UTILITY & FIXED COST MANAGEMENT
+Need ability to track and allocate recurring operating costs.
+Utility/fixed cost types:
+rent
+electricity
+water
+gas
+internet
+pest control
+maintenance contract
+software subscription
+salaried staff allocation
+Fields:
+cost type
+billing start date
+billing end date
+amount
+fixed/variable flag
+notes
+recurring flag
+allocation method
+Allocation methods
+Configurable support:
+equal daily allocation
+sales ratio-based
+item quantity-based
+category-based
+manual fixed allocation
+Default daily P&L can use:
+daily allocation = monthly amount / number of days in month
+17. PROFITABILITY & COST ENGINE
+This is the heart of the system.
+Create strong backend services for all calculations.
+17.1 Item production cost
+For each menu item:
+sum ingredient cost contribution
+include packaging/disposable lines
+include wastage in recipe line cost
+output:
+ingredient cost
+packaging cost
+total production cost
+margin amount
+margin percentage
+17.2 Ingredient cost calculation
+Support:
+latest purchase cost
+weighted average cost
+standard cost
+17.3 Daily actual consumption
+For each ingredient:
+opening + purchase - closing - waste - trial = consumed
+17.4 Theoretical consumption
+Based on recipe × items sold
+17.5 Variance
+actual consumption - theoretical consumption
+17.6 Daily P&L
+For selected date:
+total sales
+direct material consumption
+waste cost
+trial cost
+allocated expenses
+allocated utilities
+gross profit
+operating profit
+net-like daily contribution view
+17.7 Monthly P&L summary
+sales
+material cost
+expense total
+utility total
+waste total
+gross margin
+operating margin
+18. ANALYTICS DASHBOARD MODULE
+Build highly usable dashboards with filters.
+18.1 Main Owner Dashboard
+Cards:
+today sales
+today expense
+today waste
+today estimated profit
+month-to-date sales
+month-to-date expense
+month-to-date waste
+month-to-date profit
+low stock count
+pending recurring expenses
+top 5 items by revenue
+top 5 items by profit
+top 5 waste items
+Charts:
+sales trend
+expense category breakdown
+waste trend
+profit trend
+vendor spend trend
+18.2 Item Profitability Dashboard
+item-wise quantity sold
+revenue
+production cost
+gross profit
+margin %
+sortable table
+top profitable items
+low margin items
+negative margin alerts
+18.3 Ingredient Consumption Dashboard
+ingredient
+purchase qty
+actual consumed
+theoretical consumed
+variance
+variance %
+18.4 Vendor Dashboard
+total spend by vendor
+ingredient count by vendor
+price trend by vendor
+purchase frequency
+preferred vs alternate usage
+18.5 Waste Dashboard
+waste value today/week/month
+waste by category
+waste by reason
+waste by ingredient
+waste % vs sales
+waste trend chart
+18.6 Trial & R&D Dashboard
+number of active trials
+approved vs rejected
+trial spend
+trial waste
+best performing trials
+version comparison summary
+19. REPORTS MODULE
+Build exportable reports with filters and pagination.
+Required reports:
+purchase report
+expense report
+vendor spend report
+ingredient purchase history
+stock summary report
+daily stock snapshot report
+sales report
+item profitability report
+ingredient consumption report
+actual vs theoretical variance report
+waste report
+waste reason report
+trial report
+trial cost report
+daily P&L report
+monthly P&L report
+Export
+Support:
+CSV export
+Excel export
+print-friendly layout for key reports
+20. UI/UX REQUIREMENTS
+Design rules
+use MUI professionally
+modern clean dashboard UI
+responsive for desktop/tablet/mobile
+fast-loading pages
+clean tables with filters, search, sort, pagination
+avoid clutter
+use dialog/drawer forms where appropriate
+provide summary cards on top and tables below
+date filters everywhere relevant
+global notification/snackbar system
+loading skeletons and empty states
+confirmation dialogs for destructive actions
+Daily-use screens must be extremely simple:
+expense entry
+purchase entry
+waste entry
+stock closing
+sales entry
+Sidebar navigation
+Use clear grouped menu:
+Dashboard
+Masters
+Vendors
+Ingredients
+Menu & Recipes
+Purchases
+Expenses
+Inventory
+Sales
+Waste
+Trials & R&D
+Reports
+Settings
+Audit Logs
+21. FRONTEND REQUIREMENTS
+Use:
+React + Vite
+React Router
+MUI
+Axios
+Context API or Redux Toolkit
+React Hook Form + Yup/Zod validation
+reusable layout system
+reusable table component
+reusable filter bar
+reusable stat card
+reusable confirmation modal
+reusable API error handler
+Frontend pages to build
+Build pages for:
+login
+forgot/reset password
+dashboard
+all module list pages
+create/edit forms
+detail pages where relevant
+analytics pages
+settings pages
+22. BACKEND REQUIREMENTS
+Use:
+Django
+Django REST Framework
+PostgreSQL
+JWT auth
+django-filter
+pagination
+service layer for calculations
+serializers with validation
+proper modular apps
+Suggested Django apps
+accounts
+core
+masters
+vendors
+ingredients
+menuitems
+purchases
+expenses
+inventory
+sales
+waste
+trials
+analytics
+reports
+audits
+settings_app
+Backend standards
+clean models
+service classes for calculations
+signals only where truly needed
+avoid fat views
+proper serializer validation
+permission classes per role
+atomic transactions where needed
+robust error handling
+API version readiness
+23. DATABASE DESIGN REQUIREMENTS
+Design normalized schema with proper foreign keys and indexes.
+Must include created_at, updated_at, created_by, updated_by where relevant.
+Need soft delete strategy or inactive flags where appropriate.
+Index important filter/search fields:
+date
+item code
+ingredient code
+vendor code
+category
+status
+24. API REQUIREMENTS
+Create REST APIs for all modules.
+Must support:
+list
+retrieve
+create
+update
+delete/inactivate
+filters
+sorting
+search
+pagination
+Special APIs needed
+recipe cost calculation API
+item profitability API
+daily P&L API
+variance analysis API
+dashboard summary API
+vendor spend analytics API
+waste summary API
+trial comparison API
+convert approved trial to menu recipe API
+CSV import APIs for sales and purchases
+export APIs for reports
+Create clean Swagger/OpenAPI documentation.
+25. CALCULATION LOGIC DETAILS
+Implement these formulas carefully.
+25.1 Ingredient line cost in recipe
+ingredient line cost = effective ingredient cost per recipe UOM × net quantity required
+25.2 Net quantity required
+net quantity required = quantity required + wastage quantity
+or
+net quantity required = quantity required × (1 + wastage_percent/100)
+25.3 Item production cost
+sum of all recipe line costs
+25.4 Item margin
+selling price - production cost
+25.5 Margin %
+(item margin / selling price) × 100
+25.6 Actual stock consumption
+opening + inward - closing - waste - trial
+25.7 Theoretical consumption
+sum of all sold quantities × recipe quantities
+25.8 Variance
+actual consumption - theoretical consumption
+25.9 Daily waste %
+daily waste / daily sales × 100
+25.10 Daily allocated fixed cost
+monthly fixed amount / number of days in month
+25.11 Daily estimated operating profit
+sales - direct material cost - waste cost - trial cost - daily allocated expenses - daily allocated utilities
+26. ALERTS & SMART INSIGHTS
+Build backend-ready alert logic and basic frontend display.
+Alerts:
+low stock
+high waste item
+negative margin item
+high variance ingredient
+recurring expense due
+high vendor price increase
+rejected trial count high
+Smart insight cards
+Generate simple insight strings such as:
+“Milk variance is higher than expected this week.”
+“Cold Coffee is currently the highest profit item.”
+“Waste increased by 18% compared to last week.”
+“Cheese purchase cost increased from previous period.”
+No external AI needed initially; build rule-based insight engine.
+27. AUDIT LOGS
+Track audit for:
+purchases
+expenses
+recipe changes
+price changes
+vendor changes
+stock adjustments
+waste entries
+trial approvals
+settings updates
+Audit log fields:
+module
+record id
+action
+old value json
+new value json
+changed by
+changed at
+Build audit log viewer page with filters.
+28. IMPORT/EXPORT
+CSV import
+Support import for:
+sales
+ingredients
+vendors
+opening stock
+purchases optional
+Need:
+downloadable template
+validation report
+row-level error feedback
+Export
+Enable CSV/Excel export from reports and major listing pages.
+29. NON-FUNCTIONAL REQUIREMENTS
+secure coding practices
+backend validation for all key business rules
+proper API error responses
+mobile/tablet usable
+performance optimized for moderate data volume
+code readability and maintainability
+modular architecture
+production-ready environment variable usage
+proper CORS handling
+logging
+basic test coverage
+30. TESTING REQUIREMENTS
+Create:
+backend unit tests for calculation services
+serializer validation tests
+API tests for critical flows
+frontend component tests for key reusable components
+manual QA checklist for end-to-end flows
+Critical flows to test:
+login
+vendor create
+ingredient create
+recipe create
+purchase entry
+weighted cost update
+sales entry/import
+stock snapshot
+waste entry
+trial creation/versioning
+trial approval to recipe conversion
+item profitability
+daily P&L
+variance analytics
+exports
+31. SEED / DEMO DATA
+Create demo seed data for Epic Poetry Cafe style usage:
+sample vendors
+sample ingredients
+sample menu items
+sample recipes
+sample purchases
+sample expenses
+sample sales
+sample waste
+sample trials
+Include realistic examples such as:
+Cold Coffee
+Cappuccino
+Pasta
+Sandwich
+Lemongrass Cooler Iced Tea
+32. DELIVERABLES EXPECTED FROM REPLIT BUILD
+The generated project should include:
+Backend
+Django project
+modular apps
+models
+serializers
+views/viewsets
+urls
+permissions
+services
+migrations
+seeds
+tests
+API docs
+Frontend
+Vite React project
+routing
+auth flow
+pages
+forms
+dashboards
+reusable components
+API integration
+validation
+responsive layout
+Documentation
+README with setup instructions
+environment variable guide
+module overview
+API usage guide
+import template explanation
+33. CODING STANDARDS
+Backend
+PEP8
+clear names
+comments where logic is non-obvious
+services for business calculations
+avoid duplication
+Frontend
+clean folder structure
+component reuse
+avoid inline messy logic
+clear page-level state management
+consistent MUI patterns
+34. FOLDER STRUCTURE EXPECTATION
+Backend suggested structure
+backend/
+config/
+apps/
+accounts/
+masters/
+vendors/
+ingredients/
+menuitems/
+purchases/
+expenses/
+inventory/
+sales/
+waste/
+trials/
+analytics/
+reports/
+audits/
+settings_app/
+requirements.txt
+manage.py
+Frontend suggested structure
+frontend/
+src/
+api/
+app/
+components/
+features/
+pages/
+layouts/
+routes/
+hooks/
+utils/
+constants/
+styles/
+35. BUILD ORDER
+Implement in this order for stable development:
+Phase 1
+authentication
+role management
+master data
+vendors
+ingredients
+menu items + recipes
+Phase 2
+purchases
+expenses
+inventory basics
+sales entry/import
+Phase 3
+waste
+trial & R&D
+utility/fixed cost setup
+Phase 4
+costing engine
+profitability APIs
+daily P&L
+variance engine
+Phase 5
+dashboards
+reports
+audit logs
+exports
+seed/demo data
+tests
+documentation
+36. VERY IMPORTANT DEVELOPMENT NOTES
+Do not hard-code category names inside logic
+Do not hard-code item/vendor/ingredient assumptions
+Make configuration editable
+Ensure formulas are centralized in service classes
+Ensure deleting records does not break analytics history
+Use status/inactive strategy where needed
+Design all tables with future scalability in mind
+Keep UI fast and usable
+Optimize for owner visibility and simple staff entry
+37. FINAL INSTRUCTION TO REPLIT
+Now generate the complete full-stack application codebase for this system with:
+clean architecture
+production-ready patterns
+modular code
+database models
+REST APIs
+authentication
+dashboards
+forms
+analytics
+reports
+demo data
+documentation
+The generated app must be immediately runnable in Replit after environment configuration, migration, and seed execution.

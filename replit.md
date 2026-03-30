@@ -1,8 +1,8 @@
-# Workspace
+# Epic Poetry Cafe - Operations Management System
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+Comprehensive cafe operations management system with modules for vendors, ingredients, menu/recipes with costing engine, purchases, expenses, inventory/stock tracking, sales, waste management, trials/R&D, daily P&L analytics, dashboards, reports, and audit logs.
 
 ## Stack
 
@@ -10,87 +10,77 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Node.js version**: 24
 - **Package manager**: pnpm
 - **TypeScript version**: 5.9
-- **API framework**: Express 5
+- **Frontend**: React + Vite (artifacts/epic-poetry-cafe)
+- **API framework**: Express 5 (artifacts/api-server)
 - **Database**: PostgreSQL + Drizzle ORM
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
+- **Auth**: Custom JWT (HMAC-SHA256) with SESSION_SECRET env var
 
 ## Structure
 
 ```text
 artifacts-monorepo/
-├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
-├── lib/                    # Shared libraries
+├── artifacts/
+│   ├── api-server/         # Express API server (port from PORT env)
+│   │   └── src/
+│   │       ├── routes/     # All API route files (auth, users, categories, uom, config, vendors, ingredients, menuItems, purchases, expenses, inventory, sales, waste, trials, dashboard, reports, auditLogs)
+│   │       ├── lib/        # Auth (JWT), audit logging, code generator
+│   │       └── seed.ts     # Seeds admin user + categories + UOMs + config
+│   └── epic-poetry-cafe/   # React frontend (Vite)
+│       └── src/
+│           ├── pages/      # Login, Dashboard, Vendors, Ingredients, Menu, Purchases, Expenses, Sales, Inventory, Waste, Trials, Reports, AuditLogs, Masters
+│           ├── components/ # Layout (sidebar+topbar), UI extras
+│           └── lib/        # Auth context (JWT token in localStorage)
+├── lib/
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
 │   ├── api-zod/            # Generated Zod schemas from OpenAPI
 │   └── db/                 # Drizzle ORM schema + DB connection
-├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
-├── tsconfig.json           # Root TS project references
-└── package.json            # Root package with hoisted devDeps
+│       └── src/schema/     # 14 schema files (users, categories, uom, config, vendors, ingredients, menuItems, purchases, expenses, inventory, sales, waste, trials, auditLogs)
+├── scripts/                # Utility scripts
+└── pnpm-workspace.yaml
 ```
 
-## TypeScript & Composite Projects
+## Database Tables (14)
 
-Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. This means:
+users, categories, uom, system_config, vendors, ingredients, ingredient_vendor_mapping, menu_items, recipe_lines, purchases, purchase_lines, expenses, stock_snapshots, stock_adjustments, sales_entries, waste_entries, trials, trial_versions, trial_ingredient_lines, audit_logs
 
-- **Always typecheck from the root** — run `pnpm run typecheck` (which runs `tsc --build --emitDeclarationOnly`). This builds the full dependency graph so that cross-package imports resolve correctly. Running `tsc` inside a single package will fail if its dependencies haven't been built yet.
-- **`emitDeclarationOnly`** — we only emit `.d.ts` files during typecheck; actual JS bundling is handled by esbuild/tsx/vite...etc, not `tsc`.
-- **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array. `tsc --build` uses this to determine build order and skip up-to-date packages.
+## API Routes
 
-## Root Scripts
+All routes under `/api` prefix. Global auth middleware requires Bearer token for all routes except `/api/healthz` and `/api/auth/login`.
 
-- `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
-- `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
+- **Auth**: POST /auth/login, GET /auth/me
+- **Users**: GET/POST /users, PATCH /users/:id
+- **Categories**: GET/POST /categories, PATCH/DELETE /categories/:id
+- **UOM**: GET/POST /uom, PATCH /uom/:id
+- **Config**: GET/PATCH /config
+- **Vendors**: GET/POST /vendors, GET/PATCH /vendors/:id, GET /vendors/:id/spend-summary
+- **Ingredients**: GET/POST /ingredients, GET/PATCH /ingredients/:id, GET/POST /ingredients/:id/vendor-mappings
+- **Menu Items**: GET/POST /menu-items, GET/PATCH /menu-items/:id, GET/PUT /menu-items/:id/recipe, GET /menu-items/:id/costing
+- **Purchases**: GET/POST /purchases, GET /purchases/:id
+- **Expenses**: GET/POST /expenses, GET/PATCH /expenses/:id
+- **Inventory**: GET /inventory/stock-overview, GET/POST /inventory/stock-snapshots, POST /inventory/adjustments
+- **Sales**: GET/POST /sales, PATCH/DELETE /sales/:id, GET /sales/daily-summary
+- **Waste**: GET/POST /waste, PATCH /waste/:id, GET /waste/summary
+- **Trials**: GET/POST /trials, GET/PATCH /trials/:id, POST /trials/:id/versions, POST /trials/:trialId/versions/:versionId/convert
+- **Dashboard**: GET /dashboard/summary, /profitability, /daily-pl, /consumption-variance, /sales-trend, /expense-breakdown, /vendor-spend
+- **Reports**: GET /reports/export?reportType=...
+- **Audit Logs**: GET /audit-logs
 
-## Packages
+## Auth
 
-### `artifacts/api-server` (`@workspace/api-server`)
+- Login: admin / admin123
+- JWT stored in localStorage, sent as Authorization: Bearer header
+- Roles: admin, owner, manager, purchase_store, kitchen_bar, accounts, viewer
 
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
+## Key Features
 
-- Entry: `src/index.ts` — reads `PORT`, starts Express
-- App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health` (full path: `/api/health`)
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-- Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
-
-### `lib/db` (`@workspace/db`)
-
-Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
-
-- `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
-- `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
-
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
-
-### `lib/api-spec` (`@workspace/api-spec`)
-
-Owns the OpenAPI 3.1 spec (`openapi.yaml`) and the Orval config (`orval.config.ts`). Running codegen produces output into two sibling packages:
-
-1. `lib/api-client-react/src/generated/` — React Query hooks + fetch client
-2. `lib/api-zod/src/generated/` — Zod schemas
-
-Run codegen: `pnpm --filter @workspace/api-spec run codegen`
-
-### `lib/api-zod` (`@workspace/api-zod`)
-
-Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used by `api-server` for response validation.
-
-### `lib/api-client-react` (`@workspace/api-client-react`)
-
-Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
-
-### `scripts` (`@workspace/scripts`)
-
-Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+- **Costing Engine**: Weighted average (default), latest, or standard cost methods
+- **Auto code generation**: VND0001, ING0001, MNU0001, PUR0001, EXP0001, WST0001, TRL0001
+- **Purchase -> Inventory**: Purchases auto-update ingredient stock + weighted avg cost
+- **Waste -> Stock**: Ingredient waste auto-deducts from stock
+- **Trial -> Menu**: Convert approved trial versions to menu item recipes
+- **Daily P&L**: Real-time profit/loss calculation from sales, material cost, waste, expenses
+- **Consumption Variance**: Compare actual vs theoretical ingredient consumption
