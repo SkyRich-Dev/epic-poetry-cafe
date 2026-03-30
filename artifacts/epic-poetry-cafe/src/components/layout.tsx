@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth';
 import { 
   LayoutDashboard, Coffee, Users, Package, ShoppingCart, 
   Receipt, FileText, Settings, LogOut, Menu, X, Trash2, 
-  FlaskConical, ClipboardList, PackageSearch
+  FlaskConical, ClipboardList, PackageSearch, Upload
 } from 'lucide-react';
 import { cn } from './ui-extras';
 
@@ -37,6 +37,7 @@ const navGroups = [
   {
     title: 'Admin',
     items: [
+      { name: 'Excel Upload', path: '/upload', icon: Upload },
       { name: 'Reports', path: '/reports', icon: ClipboardList },
       { name: 'Masters & Config', path: '/masters', icon: Settings },
     ]

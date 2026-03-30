@@ -17,6 +17,7 @@ import trialsRouter from "./trials";
 import dashboardRouter from "./dashboard";
 import reportsRouter from "./reports";
 import auditLogsRouter from "./auditLogs";
+import uploadRouter from "./upload";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(trialsRouter);
 router.use(dashboardRouter);
 router.use(reportsRouter);
 router.use(auditLogsRouter);
+router.use(uploadRouter);
 
 export default router;

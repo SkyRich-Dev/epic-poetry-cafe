@@ -1,0 +1,395 @@
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import multer, { MulterError } from "multer";
+import * as XLSX from "xlsx";
+import { eq } from "drizzle-orm";
+import {
+  db,
+  salesEntriesTable,
+  menuItemsTable,
+  purchasesTable,
+  purchaseLinesTable,
+  vendorsTable,
+  ingredientsTable,
+  expensesTable,
+} from "@workspace/db";
+import { authMiddleware } from "../lib/auth";
+import { createAuditLog } from "../lib/audit";
+import { generateCode } from "../lib/codeGenerator";
+import { logger } from "../lib/logger";
+
+const router: IRouter = Router();
+
+const ALLOWED_MIMES = [
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  "application/octet-stream",
+];
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = file.originalname.toLowerCase();
+    if (!ext.endsWith(".xlsx") && !ext.endsWith(".xls")) {
+      return cb(new Error("Only .xlsx and .xls files are allowed"));
+    }
+    if (!ALLOWED_MIMES.includes(file.mimetype)) {
+      return cb(new Error("Invalid file type"));
+    }
+    cb(null, true);
+  },
+});
+
+function handleUpload(req: Request, res: Response, next: NextFunction): void {
+  upload.single("file")(req, res, (err: any) => {
+    if (err instanceof MulterError) {
+      res.status(400).json({ error: err.code === "LIMIT_FILE_SIZE" ? "File too large (max 5MB)" : err.message });
+      return;
+    }
+    if (err) {
+      res.status(400).json({ error: err.message || "File upload error" });
+      return;
+    }
+    next();
+  });
+}
+
+function parseExcel(buffer: Buffer): Record<string, any>[] {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) return [];
+  const sheet = workbook.Sheets[sheetName];
+  return XLSX.utils.sheet_to_json(sheet, { defval: "" });
+}
+
+function normalizeKey(key: string): string {
+  return key.trim().toLowerCase().replace(/[\s_]+/g, "_");
+}
+
+function normalizeRow(row: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [key, val] of Object.entries(row)) {
+    result[normalizeKey(key)] = val;
+  }
+  return result;
+}
+
+function toNum(val: any): number {
+  const n = Number(val);
+  return isNaN(n) ? 0 : n;
+}
+
+function toDateStr(val: any): string {
+  if (!val) return new Date().toISOString().split("T")[0];
+  if (typeof val === "number") {
+    const d = XLSX.SSF.parse_date_code(val);
+    if (d) {
+      return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+    }
+  }
+  const str = String(val).trim();
+  const iso = new Date(str);
+  if (!isNaN(iso.getTime())) return iso.toISOString().split("T")[0];
+  return new Date().toISOString().split("T")[0];
+}
+
+function safeErrorMessage(e: any): string {
+  if (e && typeof e.message === "string") {
+    if (e.message.includes("duplicate key") || e.message.includes("violates")) return "Duplicate or constraint violation";
+    if (e.message.includes("connection") || e.message.includes("timeout")) return "Database connection issue";
+  }
+  return "Processing error";
+}
+
+function safeParseFile(buffer: Buffer): { rows: Record<string, any>[]; error?: string } {
+  try {
+    const rows = parseExcel(buffer);
+    return { rows };
+  } catch (e: any) {
+    logger.error({ err: e }, "Excel parse error");
+    return { rows: [], error: "Could not parse Excel file. Ensure it is a valid .xlsx or .xls file." };
+  }
+}
+
+router.post("/upload/sales", authMiddleware, handleUpload, async (req, res): Promise<void> => {
+  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+
+  const { rows, error } = safeParseFile(req.file.buffer);
+  if (error) { res.status(400).json({ error }); return; }
+  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
+
+  const menuItems = await db.select().from(menuItemsTable);
+  const menuByName = new Map(menuItems.map(m => [m.name.toLowerCase().trim(), m]));
+  const menuById = new Map(menuItems.map(m => [m.id, m]));
+
+  const results: { row: number; status: string; error?: string; data?: any }[] = [];
+  let successCount = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = normalizeRow(rows[i]);
+    try {
+      const salesDate = toDateStr(raw.date || raw.sales_date);
+      const itemName = String(raw.item || raw.menu_item || raw.item_name || raw.menu_item_name || "").trim();
+      const itemId = toNum(raw.item_id || raw.menu_item_id);
+      const quantity = toNum(raw.quantity || raw.qty);
+      const sellingPrice = toNum(raw.price || raw.selling_price || raw.unit_price || raw.rate);
+      const discount = toNum(raw.discount || 0);
+      const channel = String(raw.channel || "DINE_IN").toUpperCase().replace(/\s+/g, "_");
+      const notes = String(raw.notes || raw.remarks || "");
+
+      let menuItem = itemId ? menuById.get(itemId) : undefined;
+      if (!menuItem && itemName) {
+        menuItem = menuByName.get(itemName.toLowerCase());
+      }
+      if (!menuItem) { results.push({ row: i + 2, status: "error", error: `Menu item not found: "${itemName || itemId}"` }); continue; }
+      if (quantity <= 0) { results.push({ row: i + 2, status: "error", error: "Quantity must be > 0" }); continue; }
+
+      const price = sellingPrice > 0 ? sellingPrice : menuItem.sellingPrice;
+      const totalAmount = quantity * price - discount;
+
+      const [entry] = await db.insert(salesEntriesTable).values({
+        salesDate,
+        menuItemId: menuItem.id,
+        quantity,
+        sellingPrice: price,
+        totalAmount,
+        discount,
+        channel,
+        notes: notes || undefined,
+      }).returning();
+
+      await createAuditLog("sales", entry.id, "create", null, entry);
+      successCount++;
+      results.push({ row: i + 2, status: "success", data: { id: entry.id, item: menuItem.name, quantity, total: totalAmount } });
+    } catch (e: any) {
+      logger.error({ err: e, row: i + 2 }, "Sales upload row error");
+      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
+    }
+  }
+
+  res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results });
+});
+
+router.post("/upload/purchases", authMiddleware, handleUpload, async (req, res): Promise<void> => {
+  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+
+  const { rows, error } = safeParseFile(req.file.buffer);
+  if (error) { res.status(400).json({ error }); return; }
+  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
+
+  const vendors = await db.select().from(vendorsTable);
+  const vendorByName = new Map(vendors.map(v => [v.name.toLowerCase().trim(), v]));
+  const vendorById = new Map(vendors.map(v => [v.id, v]));
+  const ingredients = await db.select().from(ingredientsTable);
+  const ingByName = new Map(ingredients.map(i => [i.name.toLowerCase().trim(), i]));
+  const ingById = new Map(ingredients.map(i => [i.id, i]));
+
+  const grouped = new Map<string, { vendorId: number; date: string; invoice?: string; paymentMode?: string; lines: any[] }>();
+  const results: { row: number; status: string; error?: string; data?: any }[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = normalizeRow(rows[i]);
+    try {
+      const purchaseDate = toDateStr(raw.date || raw.purchase_date);
+      const vendorName = String(raw.vendor || raw.vendor_name || "").trim();
+      const vendorId = toNum(raw.vendor_id);
+      const ingredientName = String(raw.ingredient || raw.ingredient_name || raw.item || raw.item_name || "").trim();
+      const ingredientId = toNum(raw.ingredient_id);
+      const quantity = toNum(raw.quantity || raw.qty);
+      const unitRate = toNum(raw.rate || raw.unit_rate || raw.price || raw.unit_price);
+      const taxPercent = toNum(raw.tax || raw.tax_percent || raw.tax_pct || 0);
+      const purchaseUom = String(raw.uom || raw.unit || "unit").trim();
+      const invoice = String(raw.invoice || raw.invoice_number || raw.invoice_no || "").trim();
+      const paymentMode = String(raw.payment_mode || raw.payment || "cash").trim();
+
+      let vendor = vendorId ? vendorById.get(vendorId) : undefined;
+      if (!vendor && vendorName) vendor = vendorByName.get(vendorName.toLowerCase());
+      if (!vendor) { results.push({ row: i + 2, status: "error", error: `Vendor not found: "${vendorName || vendorId}"` }); continue; }
+
+      let ing = ingredientId ? ingById.get(ingredientId) : undefined;
+      if (!ing && ingredientName) ing = ingByName.get(ingredientName.toLowerCase());
+      if (!ing) { results.push({ row: i + 2, status: "error", error: `Ingredient not found: "${ingredientName || ingredientId}"` }); continue; }
+
+      if (quantity <= 0) { results.push({ row: i + 2, status: "error", error: "Quantity must be > 0" }); continue; }
+      if (unitRate <= 0) { results.push({ row: i + 2, status: "error", error: "Unit rate must be > 0" }); continue; }
+
+      const groupKey = `${vendor.id}_${purchaseDate}_${invoice}`;
+      if (!grouped.has(groupKey)) {
+        grouped.set(groupKey, { vendorId: vendor.id, date: purchaseDate, invoice: invoice || undefined, paymentMode, lines: [] });
+      }
+      grouped.get(groupKey)!.lines.push({ ingredientId: ing.id, ingredientName: ing.name, quantity, purchaseUom, unitRate, taxPercent, rowIndex: i + 2 });
+    } catch (e: any) {
+      logger.error({ err: e, row: i + 2 }, "Purchase upload row parse error");
+      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
+    }
+  }
+
+  let successCount = 0;
+
+  for (const [, group] of grouped) {
+    try {
+      await db.transaction(async (tx) => {
+        const purchaseNumber = await generateCode("PUR", "purchases");
+        let totalAmount = 0;
+
+        const [purchase] = await tx.insert(purchasesTable).values({
+          purchaseNumber,
+          purchaseDate: group.date,
+          vendorId: group.vendorId,
+          invoiceNumber: group.invoice,
+          paymentMode: group.paymentMode,
+          paymentStatus: "pending",
+          totalAmount: 0,
+        }).returning();
+
+        for (const line of group.lines) {
+          const lineTotal = line.quantity * line.unitRate * (1 + line.taxPercent / 100);
+          totalAmount += lineTotal;
+
+          await tx.insert(purchaseLinesTable).values({
+            purchaseId: purchase.id,
+            ingredientId: line.ingredientId,
+            quantity: line.quantity,
+            purchaseUom: line.purchaseUom,
+            unitRate: line.unitRate,
+            taxPercent: line.taxPercent,
+            lineTotal,
+          });
+
+          const [ing] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
+          if (ing) {
+            const newStock = ing.currentStock + line.quantity;
+            const oldTotal = ing.weightedAvgCost * ing.currentStock;
+            const newTotal = oldTotal + line.unitRate * line.quantity;
+            const newAvg = newStock > 0 ? newTotal / newStock : line.unitRate;
+            await tx.update(ingredientsTable).set({
+              currentStock: newStock,
+              latestCost: line.unitRate,
+              weightedAvgCost: newAvg,
+            }).where(eq(ingredientsTable.id, line.ingredientId));
+          }
+
+          successCount++;
+          results.push({ row: line.rowIndex, status: "success", data: { purchaseNumber, ingredient: line.ingredientName, quantity: line.quantity, lineTotal } });
+        }
+
+        await tx.update(purchasesTable).set({ totalAmount }).where(eq(purchasesTable.id, purchase.id));
+        await createAuditLog("purchases", purchase.id, "create", null, { purchaseNumber, totalAmount });
+      });
+    } catch (e: any) {
+      logger.error({ err: e }, "Purchase group transaction error");
+      for (const line of group.lines) {
+        const existing = results.find(r => r.row === line.rowIndex);
+        if (existing && existing.status === "success") {
+          existing.status = "error";
+          existing.error = "Transaction failed — entire purchase group rolled back";
+          delete existing.data;
+          successCount--;
+        }
+      }
+    }
+  }
+
+  res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results });
+});
+
+router.post("/upload/expenses", authMiddleware, handleUpload, async (req, res): Promise<void> => {
+  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+
+  const { rows, error } = safeParseFile(req.file.buffer);
+  if (error) { res.status(400).json({ error }); return; }
+  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
+
+  const results: { row: number; status: string; error?: string; data?: any }[] = [];
+  let successCount = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = normalizeRow(rows[i]);
+    try {
+      const expenseDate = toDateStr(raw.date || raw.expense_date);
+      const costType = String(raw.cost_type || raw.type || "fixed").toLowerCase().trim();
+      const category = String(raw.category || "").trim();
+      const description = String(raw.description || raw.desc || raw.details || "").trim();
+      const amount = toNum(raw.amount || raw.base_amount);
+      const taxAmount = toNum(raw.tax || raw.tax_amount || 0);
+      const totalAmount = amount + taxAmount;
+      const paymentMode = String(raw.payment_mode || raw.payment || "cash").trim();
+      const paidBy = String(raw.paid_by || "").trim() || undefined;
+
+      if (!description && !category) { results.push({ row: i + 2, status: "error", error: "Description or category is required" }); continue; }
+      if (amount <= 0) { results.push({ row: i + 2, status: "error", error: "Amount must be > 0" }); continue; }
+      if (!["fixed", "variable", "semi_variable"].includes(costType)) {
+        results.push({ row: i + 2, status: "error", error: `Invalid cost_type. Use fixed, variable, or semi_variable` }); continue;
+      }
+
+      const expenseNumber = await generateCode("EXP", "expenses");
+      const [expense] = await db.insert(expensesTable).values({
+        expenseNumber,
+        expenseDate,
+        amount,
+        taxAmount,
+        totalAmount,
+        paymentMode,
+        paidBy,
+        description: description || category,
+        costType,
+      }).returning();
+
+      await createAuditLog("expenses", expense.id, "create", null, expense);
+      successCount++;
+      results.push({ row: i + 2, status: "success", data: { id: expense.id, expenseNumber, description: description || category, total: totalAmount } });
+    } catch (e: any) {
+      logger.error({ err: e, row: i + 2 }, "Expense upload row error");
+      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
+    }
+  }
+
+  res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results });
+});
+
+router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<void> => {
+  const { type } = req.params;
+  let headers: string[];
+  let sampleRow: any[];
+  let sheetName: string;
+
+  switch (type) {
+    case "sales":
+      sheetName = "Sales";
+      headers = ["Date", "Item", "Quantity", "Price", "Discount", "Channel", "Notes"];
+      sampleRow = ["2026-03-30", "Cappuccino", 10, 180, 0, "DINE_IN", "Morning batch"];
+      break;
+    case "purchases":
+      sheetName = "Purchases";
+      headers = ["Date", "Vendor", "Ingredient", "Quantity", "UOM", "Rate", "Tax_Percent", "Invoice", "Payment_Mode"];
+      sampleRow = ["2026-03-30", "Fresh Dairy Co", "Whole Milk", 20, "L", 55, 0, "INV-001", "cash"];
+      break;
+    case "expenses":
+      sheetName = "Expenses";
+      headers = ["Date", "Cost_Type", "Category", "Description", "Amount", "Tax", "Payment_Mode", "Paid_By"];
+      sampleRow = ["2026-03-30", "fixed", "Rent", "Monthly shop rent", 50000, 0, "bank_transfer", "Owner"];
+      break;
+    default:
+      res.status(400).json({ error: "Invalid template type. Use: sales, purchases, or expenses" });
+      return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  const wsData = [headers, sampleRow];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  const colWidths = headers.map((h, idx) => {
+    const maxLen = Math.max(h.length, String(sampleRow[idx]).length);
+    return { wch: maxLen + 4 };
+  });
+  ws["!cols"] = colWidths;
+
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename=${type}_template.xlsx`);
+  res.send(buf);
+});
+
+export default router;

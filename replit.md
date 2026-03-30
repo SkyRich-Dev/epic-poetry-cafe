@@ -65,6 +65,7 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Sales**: GET/POST /sales, PATCH/DELETE /sales/:id, GET /sales/daily-summary
 - **Waste**: GET/POST /waste, PATCH/DELETE /waste/:id, GET /waste/summary
 - **Trials**: GET/POST /trials, GET/PATCH/DELETE /trials/:id, POST /trials/:id/versions, POST /trials/:trialId/versions/:versionId/convert
+- **Upload**: POST /upload/sales, /upload/purchases, /upload/expenses (multipart file), GET /upload/template/:type (xlsx template download)
 - **Dashboard**: GET /dashboard/summary, /profitability, /daily-pl, /consumption-variance, /sales-trend, /expense-breakdown, /vendor-spend
 - **Reports**: GET /reports/export?reportType=...
 - **Audit Logs**: GET /audit-logs
@@ -84,5 +85,6 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Trial -> Menu**: Convert approved trial versions to menu item recipes
 - **Daily P&L**: Real-time profit/loss calculation from sales, material cost, waste, expenses
 - **Consumption Variance**: Compare actual vs theoretical ingredient consumption (converted to stock UOM)
+- **Excel Upload**: Bulk import sales, purchases, expenses from .xlsx/.xls files with row-by-row validation, auto name-matching (vendors, ingredients, menu items), and detailed import results
 - **Auth Token**: Frontend uses setAuthTokenGetter from custom-fetch for global API auth header injection
 - **PATCH operations**: All update schemas use .partial() for optional field updates
