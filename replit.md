@@ -65,7 +65,7 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Sales**: GET/POST /sales, PATCH/DELETE /sales/:id, GET /sales/daily-summary
 - **Waste**: GET/POST /waste, PATCH/DELETE /waste/:id, GET /waste/summary
 - **Trials**: GET/POST /trials, GET/PATCH/DELETE /trials/:id, POST /trials/:id/versions, POST /trials/:trialId/versions/:versionId/convert
-- **Upload**: POST /upload/sales, /upload/purchases, /upload/expenses (multipart file), GET /upload/template/:type (xlsx template download)
+- **Upload**: POST /upload/sales, /upload/purchases, /upload/expenses, /upload/menu (multipart file), GET /upload/template/:type (xlsx template download, type=sales|purchases|expenses|menu)
 - **Reports (Analytics)**: GET /reports/item-profitability, /reports/item-wastage (params: period=daily|weekly|monthly|custom, fromDate, toDate)
 - **Dashboard**: GET /dashboard/summary, /profitability, /daily-pl, /consumption-variance, /sales-trend, /expense-breakdown, /vendor-spend
 - **Reports**: GET /reports/export?reportType=...

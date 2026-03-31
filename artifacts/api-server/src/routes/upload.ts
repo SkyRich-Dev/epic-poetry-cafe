@@ -6,6 +6,8 @@ import {
   db,
   salesEntriesTable,
   menuItemsTable,
+  recipeLinesTable,
+  categoriesTable,
   purchasesTable,
   purchaseLinesTable,
   vendorsTable,
@@ -347,6 +349,188 @@ router.post("/upload/expenses", authMiddleware, handleUpload, async (req, res): 
   res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results });
 });
 
+router.post("/upload/menu", authMiddleware, handleUpload, async (req, res): Promise<void> => {
+  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+
+  const { rows, error } = safeParseFile(req.file.buffer);
+  if (error) { res.status(400).json({ error }); return; }
+  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
+
+  const categories = await db.select().from(categoriesTable);
+  const catByName = new Map(categories.map(c => [c.name.toLowerCase().trim(), c]));
+  const ingredients = await db.select().from(ingredientsTable);
+  const ingByName = new Map(ingredients.map(i => [i.name.toLowerCase().trim(), i]));
+  const existingMenuItems = await db.select().from(menuItemsTable);
+  const menuByName = new Map(existingMenuItems.map(m => [m.name.toLowerCase().trim(), m]));
+
+  const grouped = new Map<string, {
+    name: string;
+    categoryName: string;
+    description: string;
+    sellingPrice: number;
+    dineInPrice: number | null;
+    takeawayPrice: number | null;
+    deliveryPrice: number | null;
+    recipeLines: { ingredientName: string; quantity: number; uom: string; wastagePercent: number; stage: string; notes: string; rowIndex: number }[];
+  }>();
+
+  const results: { row: number; status: string; error?: string; data?: any }[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = normalizeRow(rows[i]);
+    try {
+      const menuItemName = String(raw.menu_item || raw.item || raw.name || raw.menu_item_name || "").trim();
+      const categoryName = String(raw.category || "").trim();
+      const description = String(raw.description || raw.desc || "").trim();
+      const sellingPrice = toNum(raw.selling_price || raw.price || 0);
+      const dineInPrice = raw.dine_in_price != null && raw.dine_in_price !== "" ? toNum(raw.dine_in_price) : null;
+      const takeawayPrice = raw.takeaway_price != null && raw.takeaway_price !== "" ? toNum(raw.takeaway_price) : null;
+      const deliveryPrice = raw.delivery_price != null && raw.delivery_price !== "" ? toNum(raw.delivery_price) : null;
+
+      const ingredientName = String(raw.ingredient || raw.ingredient_name || "").trim();
+      const quantity = toNum(raw.quantity || raw.qty || 0);
+      const uom = String(raw.uom || raw.recipe_uom || raw.unit || "").trim();
+      const wastagePercent = toNum(raw.wastage_percent || raw.wastage || raw.waste || 0);
+      const stage = String(raw.stage || "").trim();
+      const notes = String(raw.notes || "").trim();
+
+      if (!menuItemName) { results.push({ row: i + 2, status: "error", error: "Menu item name is required" }); continue; }
+
+      const groupKey = menuItemName.toLowerCase();
+      if (!grouped.has(groupKey)) {
+        if (sellingPrice <= 0) { results.push({ row: i + 2, status: "error", error: "Selling price must be > 0 for new menu item" }); continue; }
+        grouped.set(groupKey, {
+          name: menuItemName,
+          categoryName,
+          description,
+          sellingPrice,
+          dineInPrice,
+          takeawayPrice,
+          deliveryPrice,
+          recipeLines: [],
+        });
+      }
+
+      if (ingredientName) {
+        const ing = ingByName.get(ingredientName.toLowerCase());
+        if (!ing) { results.push({ row: i + 2, status: "error", error: `Ingredient not found: "${ingredientName}"` }); continue; }
+        if (quantity <= 0) { results.push({ row: i + 2, status: "error", error: "Recipe quantity must be > 0" }); continue; }
+        if (!uom) { results.push({ row: i + 2, status: "error", error: "UOM is required for recipe line" }); continue; }
+        grouped.get(groupKey)!.recipeLines.push({ ingredientName, quantity, uom, wastagePercent, stage, notes, rowIndex: i + 2 });
+      }
+    } catch (e: any) {
+      logger.error({ err: e, row: i + 2 }, "Menu upload row parse error");
+      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
+    }
+  }
+
+  let successCount = 0;
+
+  for (const [, group] of grouped) {
+    try {
+      await db.transaction(async (tx) => {
+        let categoryId: number | null = null;
+        if (group.categoryName) {
+          const cat = catByName.get(group.categoryName.toLowerCase());
+          if (cat) {
+            categoryId = cat.id;
+          } else {
+            const [newCat] = await tx.insert(categoriesTable).values({
+              name: group.categoryName,
+              type: "menu",
+              active: true,
+              sortOrder: 0,
+            }).returning();
+            categoryId = newCat.id;
+            catByName.set(group.categoryName.toLowerCase(), newCat);
+          }
+        }
+
+        const existing = menuByName.get(group.name.toLowerCase());
+        let menuItemId: number;
+        let menuItemCode: string;
+
+        if (existing) {
+          await tx.update(menuItemsTable).set({
+            sellingPrice: group.sellingPrice,
+            dineInPrice: group.dineInPrice,
+            takeawayPrice: group.takeawayPrice,
+            deliveryPrice: group.deliveryPrice,
+            description: group.description || existing.description,
+            categoryId: categoryId ?? existing.categoryId,
+          }).where(eq(menuItemsTable.id, existing.id));
+          menuItemId = existing.id;
+          menuItemCode = existing.code;
+
+          if (group.recipeLines.length > 0) {
+            await tx.delete(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, menuItemId));
+          }
+        } else {
+          menuItemCode = await generateCode("MNU", "menu_items");
+          const [newItem] = await tx.insert(menuItemsTable).values({
+            code: menuItemCode,
+            name: group.name,
+            categoryId,
+            description: group.description || undefined,
+            sellingPrice: group.sellingPrice,
+            dineInPrice: group.dineInPrice,
+            takeawayPrice: group.takeawayPrice,
+            deliveryPrice: group.deliveryPrice,
+          }).returning();
+          menuItemId = newItem.id;
+          menuByName.set(group.name.toLowerCase(), newItem);
+        }
+
+        for (const line of group.recipeLines) {
+          const ing = ingByName.get(line.ingredientName.toLowerCase());
+          if (!ing) continue;
+          await tx.insert(recipeLinesTable).values({
+            menuItemId,
+            ingredientId: ing.id,
+            quantity: line.quantity,
+            uom: line.uom,
+            wastagePercent: line.wastagePercent,
+            stage: line.stage || undefined,
+            notes: line.notes || undefined,
+          });
+        }
+
+        await createAuditLog("menu_items", menuItemId, existing ? "update" : "create", null, {
+          code: menuItemCode,
+          name: group.name,
+          recipeLines: group.recipeLines.length,
+        });
+
+        for (const line of group.recipeLines) {
+          successCount++;
+          results.push({ row: line.rowIndex, status: "success", data: { menuItem: group.name, ingredient: line.ingredientName, quantity: line.quantity, uom: line.uom } });
+        }
+
+        if (group.recipeLines.length === 0) {
+          successCount++;
+          results.push({ row: 0, status: "success", data: { menuItem: group.name, code: menuItemCode, note: "Created without recipe lines" } });
+        }
+      });
+    } catch (e: any) {
+      logger.error({ err: e }, "Menu upload transaction error");
+      for (const line of group.recipeLines) {
+        const existing = results.find(r => r.row === line.rowIndex);
+        if (existing && existing.status === "success") {
+          existing.status = "error";
+          existing.error = "Transaction failed — entire menu item group rolled back";
+          delete existing.data;
+          successCount--;
+        }
+      }
+      if (group.recipeLines.length === 0) {
+        results.push({ row: 0, status: "error", error: `Failed to create "${group.name}": ${safeErrorMessage(e)}` });
+      }
+    }
+  }
+
+  res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results });
+});
+
 router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<void> => {
   const { type } = req.params;
   let headers: string[];
@@ -369,8 +553,23 @@ router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<v
       headers = ["Date", "Cost_Type", "Category", "Description", "Amount", "Tax", "Payment_Mode", "Paid_By"];
       sampleRow = ["2026-03-30", "fixed", "Rent", "Monthly shop rent", 50000, 0, "bank_transfer", "Owner"];
       break;
+    case "menu": {
+      sheetName = "Menu_Recipes";
+      headers = ["Menu_Item", "Category", "Description", "Selling_Price", "Dine_In_Price", "Takeaway_Price", "Delivery_Price", "Ingredient", "Quantity", "UOM", "Wastage_Percent", "Stage", "Notes"];
+      sampleRow = ["Cappuccino", "Beverages", "Classic Italian coffee", 180, 180, 200, 220, "Milk", 150, "ml", 2, "Prep", "Steamed"];
+      const wb2 = XLSX.utils.book_new();
+      const wsData2 = [headers, sampleRow, ["Cappuccino", "", "", "", "", "", "", "Coffee", 18, "g", 5, "Brew", "Espresso shot"]];
+      const ws2 = XLSX.utils.aoa_to_sheet(wsData2);
+      ws2["!cols"] = headers.map((h, idx) => ({ wch: Math.max(h.length, String(sampleRow[idx]).length) + 4 }));
+      XLSX.utils.book_append_sheet(wb2, ws2, sheetName);
+      const buf2 = XLSX.write(wb2, { type: "buffer", bookType: "xlsx" });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename=menu_template.xlsx`);
+      res.send(buf2);
+      return;
+    }
     default:
-      res.status(400).json({ error: "Invalid template type. Use: sales, purchases, or expenses" });
+      res.status(400).json({ error: "Invalid template type. Use: sales, purchases, expenses, or menu" });
       return;
   }
 

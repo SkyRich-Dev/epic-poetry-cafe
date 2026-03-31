@@ -60,7 +60,7 @@ export default function Sales() {
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(s.salesDate)}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{s.menuItemName}</td>
                 <td className="px-6 py-4">{s.channel.replace('_', ' ')}</td>
-                <td className="px-6 py-4 text-right">{s.quantity}</td>
+                <td className="px-6 py-4 text-right">{Number(s.quantity).toFixed(2)}</td>
                 <td className="px-6 py-4 text-right">{formatCurrency(s.sellingPrice)}</td>
                 <td className="px-6 py-4 text-right font-medium text-emerald-600">{formatCurrency(s.totalAmount)}</td>
               </tr>

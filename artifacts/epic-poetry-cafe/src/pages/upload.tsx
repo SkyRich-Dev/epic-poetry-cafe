@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { PageHeader, Button, formatCurrency } from '../components/ui-extras';
 import { Upload, Download, FileSpreadsheet, CheckCircle2, XCircle, AlertCircle, Loader2 } from 'lucide-react';
 
-type UploadType = 'sales' | 'purchases' | 'expenses';
+type UploadType = 'sales' | 'purchases' | 'expenses' | 'menu';
 
 interface UploadResult {
   totalRows: number;
@@ -26,6 +26,11 @@ const UPLOAD_CONFIGS: Record<UploadType, { label: string; description: string; c
     label: 'Expenses',
     description: 'Upload expense entries with cost type, category, amount, and payment details',
     columns: ['Date', 'Cost_Type (fixed/variable/semi_variable)', 'Category', 'Description', 'Amount', 'Tax', 'Payment_Mode', 'Paid_By'],
+  },
+  menu: {
+    label: 'Menu & Recipes',
+    description: 'Upload menu items with recipe lines. Rows with the same item name are grouped — first row sets item details, all rows add recipe lines.',
+    columns: ['Menu_Item', 'Category', 'Description', 'Selling_Price', 'Dine_In_Price', 'Takeaway_Price', 'Delivery_Price', 'Ingredient', 'Quantity', 'UOM', 'Wastage_Percent', 'Stage', 'Notes'],
   },
 };
 
@@ -123,7 +128,7 @@ export default function UploadPage() {
         </Button>
       </PageHeader>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {(Object.entries(UPLOAD_CONFIGS) as [UploadType, typeof config][]).map(([type, cfg]) => (
           <button
             key={type}

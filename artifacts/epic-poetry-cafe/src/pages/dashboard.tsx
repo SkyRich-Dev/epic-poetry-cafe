@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useGetDashboardSummary } from '@workspace/api-client-react';
-import { PageHeader, StatCard, formatCurrency, Badge } from '../components/ui-extras';
+import { PageHeader, StatCard, formatCurrency, Badge, cn } from '../components/ui-extras';
 import { DollarSign, TrendingUp, TrendingDown, PackageMinus, AlertCircle, TrendingUpDown } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 
@@ -77,11 +77,11 @@ export default function Dashboard() {
                   <div key={item.menuItemId} className="flex items-center justify-between pb-3 border-b border-border/50 last:border-0 last:pb-0">
                     <div>
                       <p className="font-medium text-sm text-foreground">{item.menuItemName}</p>
-                      <p className="text-xs text-muted-foreground">{item.quantitySold} sold</p>
+                      <p className="text-xs text-muted-foreground">{Number(item.quantitySold).toFixed(2)} sold</p>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-sm text-emerald-600">{formatCurrency(item.grossProfit)}</p>
-                      <p className="text-xs text-muted-foreground">{item.marginPercent}% margin</p>
+                      <p className="text-xs text-muted-foreground">{Number(item.marginPercent).toFixed(2)}% margin</p>
                     </div>
                   </div>
                 ))}
@@ -113,13 +113,13 @@ export default function Dashboard() {
             {summary.lowStockCount > 0 && (
               <div className="bg-white dark:bg-card p-4 rounded-xl border border-rose-100 dark:border-border shadow-sm">
                 <h4 className="font-semibold text-sm text-rose-700 dark:text-rose-400 mb-1">Low Stock Alert</h4>
-                <p className="text-xs text-muted-foreground">{summary.lowStockCount} ingredients are below reorder level.</p>
+                <p className="text-xs text-muted-foreground">{Number(summary.lowStockCount).toFixed(2)} ingredients are below reorder level.</p>
               </div>
             )}
             {summary.pendingRecurringExpenses > 0 && (
               <div className="bg-white dark:bg-card p-4 rounded-xl border border-amber-100 dark:border-border shadow-sm">
                 <h4 className="font-semibold text-sm text-amber-700 dark:text-amber-500 mb-1">Pending Expenses</h4>
-                <p className="text-xs text-muted-foreground">{summary.pendingRecurringExpenses} recurring expenses due soon.</p>
+                <p className="text-xs text-muted-foreground">{Number(summary.pendingRecurringExpenses).toFixed(2)} recurring expenses due soon.</p>
               </div>
             )}
             

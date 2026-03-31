@@ -41,11 +41,11 @@ export default function Trials() {
             <div className="space-y-2 relative z-10">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Target Cost:</span>
-                <span className="font-medium">${t.targetCost}</span>
+                <span className="font-medium">₹{Number(t.targetCost).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Target Price:</span>
-                <span className="font-medium">${t.targetSellingPrice}</span>
+                <span className="font-medium">₹{Number(t.targetSellingPrice).toFixed(2)}</span>
               </div>
             </div>
             <div className="mt-6 relative z-10">

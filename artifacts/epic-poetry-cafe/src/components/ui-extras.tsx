@@ -8,8 +8,13 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(amount: number | null | undefined): string {
-  if (amount == null) return '$0.00';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  if (amount == null) return '₹0.00';
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
+}
+
+export function formatNumber(value: number | null | undefined): string {
+  if (value == null) return '0.00';
+  return value.toFixed(2);
 }
 
 export function formatDate(dateString: string | null | undefined): string {

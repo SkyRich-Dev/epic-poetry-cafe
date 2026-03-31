@@ -53,7 +53,7 @@ export default function Waste() {
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(w.wasteDate)}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{w.ingredientName || w.menuItemName} <Badge variant="neutral" className="ml-2 px-1">{w.wasteType}</Badge></td>
                 <td className="px-6 py-4 text-muted-foreground">{w.reason}</td>
-                <td className="px-6 py-4 text-right">{w.quantity} {w.uom}</td>
+                <td className="px-6 py-4 text-right">{Number(w.quantity).toFixed(2)} {w.uom}</td>
                 <td className="px-6 py-4 text-right font-medium text-rose-600">{formatCurrency(w.costValue)}</td>
               </tr>
             ))}
