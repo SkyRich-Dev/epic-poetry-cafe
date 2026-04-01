@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
-import { db, pettyCashLedgerTable } from "@workspace/db";
+import { db, pettyCashLedgerTable, expensesTable } from "@workspace/db";
 import { authMiddleware } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
+import { generateCode } from "../lib/codeGenerator";
 
 const router: IRouter = Router();
 
@@ -84,6 +85,26 @@ router.post("/petty-cash", authMiddleware, async (req, res): Promise<void> => {
 
   const userId = (req as any).userId || null;
 
+  let expenseId: number | null = linkedExpenseId || null;
+
+  if (transactionType === "expense" && !linkedExpenseId) {
+    const expenseNumber = await generateCode("EXP", "expenses");
+    const [expense] = await db.insert(expensesTable).values({
+      expenseNumber,
+      expenseDate: transactionDate,
+      amount: parsedAmount,
+      taxAmount: 0,
+      totalAmount: parsedAmount,
+      paymentMode: "Petty Cash",
+      paidBy: counterpartyName || null,
+      description: description || category || "Petty Cash Expense",
+      costType: "variable",
+      recurring: false,
+      createdBy: userId,
+    }).returning();
+    expenseId = expense.id;
+  }
+
   const [txn] = await db.insert(pettyCashLedgerTable).values({
     transactionDate,
     transactionType,
@@ -91,12 +112,16 @@ router.post("/petty-cash", authMiddleware, async (req, res): Promise<void> => {
     method: method || null,
     counterpartyName: counterpartyName || null,
     category: category || null,
-    linkedExpenseId: linkedExpenseId || null,
+    linkedExpenseId: expenseId,
     description: description || null,
     runningBalance: newBalance,
     approvalStatus: "approved",
     createdBy: userId,
   }).returning();
+
+  if (transactionType === "expense" && expenseId && !linkedExpenseId) {
+    await db.update(expensesTable).set({ linkedPettyCashId: txn.id }).where(eq(expensesTable.id, expenseId));
+  }
 
   await createAuditLog("petty_cash", txn.id, "create", null, txn);
   res.status(201).json(txn);
@@ -108,9 +133,14 @@ router.delete("/petty-cash/:id", authMiddleware, async (req, res): Promise<void>
 
   const [existing] = await db.select().from(pettyCashLedgerTable).where(eq(pettyCashLedgerTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-  if (existing.linkedExpenseId) { res.status(400).json({ error: "Cannot delete linked petty cash entry. Delete the expense instead." }); return; }
+
+  const linkedExpenseId = existing.linkedExpenseId;
 
   const [txn] = await db.delete(pettyCashLedgerTable).where(eq(pettyCashLedgerTable.id, id)).returning();
+
+  if (linkedExpenseId) {
+    await db.delete(expensesTable).where(eq(expensesTable.id, linkedExpenseId));
+  }
   await createAuditLog("petty_cash", id, "delete", txn, null);
   res.json({ success: true });
 });
