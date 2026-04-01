@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useListPettyCash, useCreatePettyCash, useGetPettyCashSummary, useDeletePettyCash } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter } from '../components/ui-extras';
-import { Plus, Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, Trash2 } from 'lucide-react';
+import { Plus, Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../lib/auth';
 
 const METHODS = ['Cash', 'Bank Withdrawal', 'UPI', 'Card Withdrawal', 'Owner Contribution', 'Manager Float'];
 const CATEGORIES = ['Local Purchase', 'Cleaning Materials', 'Delivery Charges', 'Petty Maintenance', 'Staff Emergency', 'Small Repairs', 'Local Transport', 'Market Purchase', 'Tea/Snacks', 'Other'];
@@ -15,6 +16,8 @@ function TypeBadge({ type }: { type: string }) {
 
 export default function PettyCash() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
@@ -22,6 +25,33 @@ export default function PettyCash() {
   const { data: summary } = useGetPettyCashSummary();
   const createMut = useCreatePettyCash();
   const deleteMut = useDeletePettyCash();
+
+  const [obModal, setObModal] = useState(false);
+  const [obAmount, setObAmount] = useState('');
+  const [obSaving, setObSaving] = useState(false);
+
+  const handleSetOpeningBalance = async () => {
+    const amt = Number(obAmount);
+    if (isNaN(amt) || amt < 0) return;
+    setObSaving(true);
+    try {
+      const base = import.meta.env.BASE_URL || '/';
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${base}api/petty-cash/opening-balance`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ amount: amt }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      queryClient.invalidateQueries({ queryKey: ['/api/petty-cash'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/petty-cash/summary'] });
+      setObModal(false);
+    } catch (e) {
+      alert('Failed to set opening balance');
+    } finally {
+      setObSaving(false);
+    }
+  };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -80,7 +110,18 @@ export default function PettyCash() {
       </PageHeader>
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <StatCard title="Opening Balance" value={formatCurrency(summary?.openingBalance)} icon={Wallet} colorClass="text-slate-500" />
+        <div className="relative">
+          <StatCard title="Opening Balance" value={formatCurrency(summary?.openingBalance)} icon={Wallet} colorClass="text-slate-500" />
+          {isAdmin && (
+            <button
+              onClick={() => { setObAmount(String(summary?.openingBalance || 0)); setObModal(true); }}
+              className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              title="Set Opening Balance"
+            >
+              <Pencil size={14} />
+            </button>
+          )}
+        </div>
         <StatCard title="Total Receipts" value={formatCurrency(summary?.totalReceipts)} icon={ArrowDownCircle} colorClass="text-emerald-600" />
         <StatCard title="Total Expenses" value={formatCurrency(summary?.totalExpenses)} icon={ArrowUpCircle} colorClass="text-red-500" />
         <StatCard title="Adjustments" value={formatCurrency(summary?.totalAdjustments)} icon={RefreshCw} colorClass="text-blue-500" />
@@ -135,6 +176,17 @@ export default function PettyCash() {
           </tbody>
         </table>
       </div>
+
+      <Modal isOpen={obModal} onClose={() => setObModal(false)} title="Set Opening Balance"
+        footer={<><Button variant="ghost" onClick={() => setObModal(false)}>Cancel</Button><Button onClick={handleSetOpeningBalance} disabled={obSaving}>{obSaving ? 'Saving...' : 'Save'}</Button></>}>
+        <div className="space-y-4 py-2">
+          <p className="text-sm text-muted-foreground">Enter the cash amount that was already in the petty cash fund before you started tracking here. This will be added to all balance calculations.</p>
+          <div>
+            <Label>Opening Balance Amount (₹)</Label>
+            <Input type="number" min="0" step="0.01" placeholder="0.00" value={obAmount} onChange={(e: any) => setObAmount(e.target.value)} />
+          </div>
+        </div>
+      </Modal>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="New Petty Cash Entry"
         footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>Save</Button></>}>

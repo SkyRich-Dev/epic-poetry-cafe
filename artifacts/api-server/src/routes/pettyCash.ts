@@ -1,13 +1,19 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
-import { db, pettyCashLedgerTable, expensesTable } from "@workspace/db";
-import { authMiddleware } from "../lib/auth";
+import { db, pettyCashLedgerTable, expensesTable, systemConfigTable } from "@workspace/db";
+import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 
 const router: IRouter = Router();
 
+async function getOpeningBalance(): Promise<number> {
+  const [config] = await db.select().from(systemConfigTable);
+  return Number(config?.pettyCashOpeningBalance || 0);
+}
+
 async function getCurrentBalance(): Promise<number> {
+  const opening = await getOpeningBalance();
   const result = await db.select({
     balance: sql<number>`COALESCE(
       SUM(CASE WHEN transaction_type = 'receipt' THEN amount ELSE 0 END) -
@@ -16,7 +22,7 @@ async function getCurrentBalance(): Promise<number> {
       0
     )`
   }).from(pettyCashLedgerTable);
-  return Number(result[0]?.balance || 0);
+  return opening + Number(result[0]?.balance || 0);
 }
 
 router.get("/petty-cash/summary", authMiddleware, async (req, res): Promise<void> => {
@@ -29,13 +35,14 @@ router.get("/petty-cash/summary", authMiddleware, async (req, res): Promise<void
     transactionCount: sql<number>`COUNT(*)`,
   }).from(pettyCashLedgerTable);
 
+  const openingBalance = await getOpeningBalance();
   const totalReceipts = Number(result[0]?.totalReceipts || 0);
   const totalExpenses = Number(result[0]?.totalExpenses || 0);
   const totalAdjustments = Number(result[0]?.totalAdjustments || 0);
-  const currentBalance = totalReceipts - totalExpenses + totalAdjustments;
+  const currentBalance = openingBalance + totalReceipts - totalExpenses + totalAdjustments;
 
   res.json({
-    openingBalance: 0,
+    openingBalance,
     totalReceipts,
     totalExpenses,
     totalAdjustments,
@@ -43,6 +50,23 @@ router.get("/petty-cash/summary", authMiddleware, async (req, res): Promise<void
     currentBalance,
     transactionCount: Number(result[0]?.transactionCount || 0),
   });
+});
+
+router.put("/petty-cash/opening-balance", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const { amount } = req.body;
+  const parsedAmount = Number(amount);
+  if (isNaN(parsedAmount) || parsedAmount < 0) {
+    res.status(400).json({ error: "Amount must be a non-negative number" });
+    return;
+  }
+  const [config] = await db.select().from(systemConfigTable);
+  if (config) {
+    await db.update(systemConfigTable).set({ pettyCashOpeningBalance: parsedAmount }).where(eq(systemConfigTable.id, config.id));
+  } else {
+    await db.insert(systemConfigTable).values({ pettyCashOpeningBalance: parsedAmount });
+  }
+  await createAuditLog("config", 1, "update", { pettyCashOpeningBalance: config?.pettyCashOpeningBalance || 0 }, { pettyCashOpeningBalance: parsedAmount });
+  res.json({ openingBalance: parsedAmount });
 });
 
 router.get("/petty-cash", authMiddleware, async (req, res): Promise<void> => {

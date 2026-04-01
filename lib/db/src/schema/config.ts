@@ -12,6 +12,7 @@ export const systemConfigTable = pgTable("system_config", {
   lowStockAlertDays: integer("low_stock_alert_days").notNull().default(3),
   dailyAllocationMethod: text("daily_allocation_method").notNull().default("equal_daily"),
   taxRate: doublePrecision("tax_rate").notNull().default(0),
+  pettyCashOpeningBalance: doublePrecision("petty_cash_opening_balance").notNull().default(0),
 });
 
 export const insertConfigSchema = createInsertSchema(systemConfigTable).omit({ id: true });
