@@ -48,7 +48,7 @@ export function StatCard({ title, value, icon: Icon, trend, trendLabel, colorCla
         </div>
       </div>
       <div className="relative z-10">
-        <h3 className="text-3xl font-display font-bold text-foreground">{value}</h3>
+        <h3 className="text-3xl font-numbers font-bold text-foreground tracking-tight" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</h3>
         {trend && (
           <p className="text-xs mt-2 flex items-center gap-1">
             <span className={cn("font-medium", trend > 0 ? "text-emerald-600" : "text-rose-600")}>
