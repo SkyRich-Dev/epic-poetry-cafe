@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useListCategories, useCreateCategory, useListUom, useGetConfig, useUpdateConfig, useListUsers, useCreateUser, useUpdateUser, useListAuditLogs } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, Badge } from '../components/ui-extras';
-import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog } from 'lucide-react';
+import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 const TABS = [
@@ -484,7 +484,29 @@ export default function Masters() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Masters & Configuration" description="Manage categories, system settings, users, and audit logs" />
+      <PageHeader title="Masters & Configuration" description="Manage categories, system settings, users, and audit logs">
+        <Button onClick={async () => {
+          try {
+            const base = import.meta.env.BASE_URL || '/';
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${base}api/backup/download`, {
+              headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (!response.ok) throw new Error('Backup failed');
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = response.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] || 'backup.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          } catch { alert('Backup download failed'); }
+        }} variant="outline" className="gap-2">
+          <Download size={16} /> Download Backup
+        </Button>
+      </PageHeader>
 
       <div className="border-b border-border">
         <nav className="flex gap-1 -mb-px">
