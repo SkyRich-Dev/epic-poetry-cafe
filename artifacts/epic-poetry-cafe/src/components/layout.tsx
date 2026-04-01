@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Coffee, Users, Package, ShoppingCart, 
   Receipt, FileText, Settings, LogOut, Menu, X, Trash2, 
   FlaskConical, ClipboardList, PackageSearch, Upload, BarChart3,
-  Banknote, Wallet, UserCog, Store, ScrollText
+  Banknote, Wallet, Store
 } from 'lucide-react';
 import { cn } from './ui-extras';
 
@@ -46,9 +46,7 @@ const navGroups: NavGroup[] = [
       { name: 'Analytics', path: '/analytics', icon: BarChart3, adminOnly: true },
       { name: 'Excel Upload', path: '/upload', icon: Upload, adminOnly: true },
       { name: 'Reports', path: '/reports', icon: ClipboardList, adminOnly: true },
-      { name: 'User Management', path: '/users', icon: UserCog, adminOnly: true },
       { name: 'Masters & Config', path: '/masters', icon: Settings, adminOnly: true },
-      { name: 'Audit Logs', path: '/audit-logs', icon: ScrollText, adminOnly: true },
     ]
   }
 ];
