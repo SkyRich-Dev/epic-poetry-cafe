@@ -60,8 +60,8 @@ export default function MenuItems() {
               <th className="px-6 py-4">Item Name</th>
               <th className="px-6 py-4">Category</th>
               <th className="px-6 py-4 text-right">Selling Price</th>
-              <th className="px-6 py-4 text-right">Prod. Cost</th>
-              <th className="px-6 py-4 text-right">Margin</th>
+              {isAdmin && <th className="px-6 py-4 text-right">Prod. Cost</th>}
+              {isAdmin && <th className="px-6 py-4 text-right">Margin</th>}
               <th className="px-6 py-4 text-center">Status</th>
               <th className="px-6 py-4 text-center">Verified</th>
               <th className="px-6 py-4 text-right">Actions</th>
@@ -69,20 +69,22 @@ export default function MenuItems() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">Loading menu items...</td></tr>
+              <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground">Loading menu items...</td></tr>
             ) : menuItems?.length === 0 ? (
-               <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">No menu items found. Create your first one!</td></tr>
+               <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground">No menu items found. Create your first one!</td></tr>
             ) : menuItems?.map((item: any) => (
               <tr key={item.id} className="table-row-hover">
                 <td className="px-6 py-4 font-medium text-foreground">{item.name}</td>
                 <td className="px-6 py-4 text-muted-foreground">{item.categoryName || '-'}</td>
                 <td className="px-6 py-4 text-right font-medium">{formatCurrency(item.sellingPrice)}</td>
-                <td className="px-6 py-4 text-right text-muted-foreground">{formatCurrency(item.productionCost)}</td>
-                <td className="px-6 py-4 text-right">
-                  <Badge variant={item.marginPercent < 30 ? "danger" : item.marginPercent > 60 ? "success" : "warning"}>
-                    {Number(item.marginPercent).toFixed(2)}%
-                  </Badge>
-                </td>
+                {isAdmin && <td className="px-6 py-4 text-right text-muted-foreground">{formatCurrency(item.productionCost)}</td>}
+                {isAdmin && (
+                  <td className="px-6 py-4 text-right">
+                    <Badge variant={item.marginPercent < 30 ? "danger" : item.marginPercent > 60 ? "success" : "warning"}>
+                      {Number(item.marginPercent).toFixed(2)}%
+                    </Badge>
+                  </td>
+                )}
                 <td className="px-6 py-4 text-center">
                   <Badge variant={item.active ? "success" : "neutral"}>{item.active ? 'Active' : 'Inactive'}</Badge>
                 </td>

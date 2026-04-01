@@ -24,6 +24,18 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const mtdExpenses = await db.select().from(expensesTable).where(and(gte(expensesTable.expenseDate, monthStart), lte(expensesTable.expenseDate, date)));
   const mtdWaste = await db.select().from(wasteEntriesTable).where(and(gte(wasteEntriesTable.wasteDate, monthStart), lte(wasteEntriesTable.wasteDate, date)));
 
+  const yesterday = new Date(date);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split("T")[0];
+  const lastWeekSameDay = new Date(date);
+  lastWeekSameDay.setDate(lastWeekSameDay.getDate() - 7);
+  const lastWeekSameDayStr = lastWeekSameDay.toISOString().split("T")[0];
+
+  const yesterdaySales = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, yesterdayStr));
+  const lastWeekSales = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, lastWeekSameDayStr));
+  const yesterdaySalesTotal = yesterdaySales.reduce((s, e) => s + e.totalAmount, 0);
+  const lastWeekSameDaySalesTotal = lastWeekSales.reduce((s, e) => s + e.totalAmount, 0);
+
   const todaySalesTotal = todaySales.reduce((s, e) => s + e.totalAmount, 0);
   const todayExpensesTotal = todayExpenses.reduce((s, e) => s + e.totalAmount, 0);
   const todayWasteTotal = todayWaste.reduce((s, e) => s + e.costValue, 0);
@@ -131,6 +143,8 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     pettyCashBalance,
     pettyCashSpentToday,
     unsettledDaysCount: Number(unsettledDays[0]?.count || 0),
+    yesterdaySales: yesterdaySalesTotal,
+    lastWeekSameDaySales: lastWeekSameDaySalesTotal,
   });
 });
 

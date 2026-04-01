@@ -108,3 +108,5 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Excel Upload**: Bulk import sales, purchases, expenses from .xlsx/.xls files with row-by-row validation, auto name-matching (vendors, ingredients, menu items), and detailed import results
 - **Auth Token**: Frontend uses setAuthTokenGetter from custom-fetch for global API auth header injection
 - **PATCH operations**: All update schemas use .partial() for optional field updates
+- **Role-based Dashboard**: Admin sees "Owner's Dashboard" with full P&L, settlements, insights, top items. Manager/viewer sees "Operations Dashboard" with only: today's sales (with yesterday & last week same day comparisons), today's expenses, today's waste, petty cash balance, petty cash spent today
+- **Menu Cost Visibility**: Production cost and margin columns on Menu Items page are hidden from non-admin users
