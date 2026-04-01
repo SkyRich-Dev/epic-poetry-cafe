@@ -22,6 +22,9 @@ export const ingredientsTable = pgTable("ingredients", {
   perishable: boolean("perishable").notNull().default(false),
   shelfLifeDays: integer("shelf_life_days"),
   active: boolean("active").notNull().default(true),
+  verified: boolean("verified").notNull().default(false),
+  verifiedBy: integer("verified_by"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

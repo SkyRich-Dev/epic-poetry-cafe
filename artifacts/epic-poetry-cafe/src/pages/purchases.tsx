@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { useListPurchases, useCreatePurchase, useListVendors, useListIngredients } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, formatDate, DateFilter } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, formatDate, DateFilter, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
 import { Plus, Receipt, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../lib/auth';
 
 export default function Purchases() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
@@ -60,6 +63,15 @@ export default function Purchases() {
     } catch (e) { console.error(e); }
   };
 
+  const handleVerify = async (id: number) => {
+    await apiVerify('purchases', id);
+    queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
+  };
+  const handleUnverify = async (id: number) => {
+    await apiUnverify('purchases', id);
+    queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Purchases" description="Record inward inventory and vendor bills">
@@ -78,14 +90,15 @@ export default function Purchases() {
               <th className="px-6 py-4">Invoice No</th>
               <th className="px-6 py-4 text-center">Status</th>
               <th className="px-6 py-4 text-right">Total Amount</th>
+              <th className="px-6 py-4 text-center">Verified</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">Loading purchases...</td></tr>
+              <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">Loading purchases...</td></tr>
             ) : purchases?.length === 0 ? (
-               <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No purchases recorded yet.</td></tr>
-            ) : purchases?.map(p => (
+               <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No purchases recorded yet.</td></tr>
+            ) : purchases?.map((p: any) => (
               <tr key={p.id} className="table-row-hover">
                 <td className="px-6 py-4 text-foreground font-medium">{formatDate(p.purchaseDate)}</td>
                 <td className="px-6 py-4 text-muted-foreground">{p.purchaseNumber}</td>
@@ -95,6 +108,9 @@ export default function Purchases() {
                   <Badge variant={p.paymentStatus === 'PAID' ? 'success' : 'warning'}>{p.paymentStatus}</Badge>
                 </td>
                 <td className="px-6 py-4 text-right font-medium text-foreground">{formatCurrency(p.totalAmount)}</td>
+                <td className="px-6 py-4 text-center">
+                  <VerifyButton verified={!!p.verified} isAdmin={isAdmin} onVerify={() => handleVerify(p.id)} onUnverify={() => handleUnverify(p.id)} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -104,7 +120,6 @@ export default function Purchases() {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Record New Purchase" maxWidth="max-w-4xl"
         footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending || lines.length === 0}>Complete Purchase</Button></>}>
         <div className="space-y-6 py-2">
-          {/* Header Info */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-xl border border-border/50">
             <div>
               <Label>Vendor</Label>
@@ -123,7 +138,6 @@ export default function Purchases() {
             </div>
           </div>
 
-          {/* Lines */}
           <div>
             <div className="flex justify-between items-end mb-3">
               <h3 className="font-semibold text-foreground">Items Received</h3>

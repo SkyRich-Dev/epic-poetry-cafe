@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { useListExpenses, useCreateExpense } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
 import { Plus } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../lib/auth';
 
 export default function Expenses() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
@@ -29,6 +32,15 @@ export default function Expenses() {
     } catch(e) { console.error(e); }
   };
 
+  const handleVerify = async (id: number) => {
+    await apiVerify('expenses', id);
+    queryClient.invalidateQueries({ queryKey: ['/api/expenses'] });
+  };
+  const handleUnverify = async (id: number) => {
+    await apiUnverify('expenses', id);
+    queryClient.invalidateQueries({ queryKey: ['/api/expenses'] });
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Expenses" description="Manage operational costs, utilities, and generic expenses">
@@ -46,18 +58,22 @@ export default function Expenses() {
               <th className="px-6 py-4">Type</th>
               <th className="px-6 py-4">Mode</th>
               <th className="px-6 py-4 text-right">Amount</th>
+              <th className="px-6 py-4 text-center">Verified</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">Loading expenses...</td></tr>
-            ) : expenses?.map(e => (
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">Loading expenses...</td></tr>
+            ) : expenses?.map((e: any) => (
               <tr key={e.id} className="table-row-hover">
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(e.expenseDate)}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{e.description || 'Generic Expense'}</td>
                 <td className="px-6 py-4"><Badge variant="neutral">{e.costType}</Badge></td>
                 <td className="px-6 py-4 text-muted-foreground">{e.paymentMode}</td>
                 <td className="px-6 py-4 text-right font-medium text-rose-600">{formatCurrency(e.amount)}</td>
+                <td className="px-6 py-4 text-center">
+                  <VerifyButton verified={!!e.verified} isAdmin={isAdmin} onVerify={() => handleVerify(e.id)} onUnverify={() => handleUnverify(e.id)} />
+                </td>
               </tr>
             ))}
           </tbody>

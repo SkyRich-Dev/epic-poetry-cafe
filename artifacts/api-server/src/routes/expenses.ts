@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { db, expensesTable, categoriesTable, vendorsTable, pettyCashLedgerTable } from "@workspace/db";
 import { ListExpensesResponse, CreateExpenseBody, GetExpenseParams, GetExpenseResponse, UpdateExpenseParams, UpdateExpenseBody } from "@workspace/api-zod";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 
@@ -44,6 +44,9 @@ router.get("/expenses", async (req, res): Promise<void> => {
       costType: expensesTable.costType,
       recurring: expensesTable.recurring,
       recurringFrequency: expensesTable.recurringFrequency,
+      verified: expensesTable.verified,
+      verifiedBy: expensesTable.verifiedBy,
+      verifiedAt: expensesTable.verifiedAt,
       createdAt: expensesTable.createdAt,
     })
     .from(expensesTable)
@@ -53,7 +56,7 @@ router.get("/expenses", async (req, res): Promise<void> => {
   const expenses = whereClause
     ? await query.where(whereClause).orderBy(expensesTable.createdAt)
     : await query.orderBy(expensesTable.createdAt);
-  res.json(ListExpensesResponse.parse(expenses));
+  res.json(expenses);
 });
 
 router.post("/expenses", authMiddleware, async (req, res): Promise<void> => {
@@ -148,6 +151,7 @@ router.patch("/expenses/:id", authMiddleware, async (req, res): Promise<void> =>
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [old] = await db.select().from(expensesTable).where(eq(expensesTable.id, params.data.id));
   if (!old) { res.status(404).json({ error: "Not found" }); return; }
+  if (old.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }
   const updates: any = { ...parsed.data };
   const newAmount = parsed.data.amount ?? old.amount;
   const newTax = parsed.data.taxAmount ?? old.taxAmount;
@@ -166,6 +170,7 @@ router.delete("/expenses/:id", authMiddleware, async (req, res): Promise<void> =
 
   const [existing] = await db.select().from(expensesTable).where(eq(expensesTable.id, params.data.id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
 
   if (existing.linkedPettyCashId) {
     await db.delete(pettyCashLedgerTable).where(eq(pettyCashLedgerTable.id, existing.linkedPettyCashId));
@@ -174,6 +179,22 @@ router.delete("/expenses/:id", authMiddleware, async (req, res): Promise<void> =
   const [expense] = await db.delete(expensesTable).where(eq(expensesTable.id, params.data.id)).returning();
   await createAuditLog("expenses", expense.id, "delete", expense, null);
   res.json({ success: true });
+});
+
+router.patch("/expenses/:id/verify", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [expense] = await db.update(expensesTable).set({ verified: true, verifiedBy: (req as any).userId, verifiedAt: new Date() }).where(eq(expensesTable.id, id)).returning();
+  if (!expense) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("expenses", expense.id, "verify", null, expense);
+  res.json({ ...expense, categoryName: null, vendorName: null });
+});
+
+router.patch("/expenses/:id/unverify", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [expense] = await db.update(expensesTable).set({ verified: false, verifiedBy: null, verifiedAt: null }).where(eq(expensesTable.id, id)).returning();
+  if (!expense) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("expenses", expense.id, "unverify", null, expense);
+  res.json({ ...expense, categoryName: null, vendorName: null });
 });
 
 export default router;

@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { db, purchasesTable, purchaseLinesTable, vendorsTable, ingredientsTable } from "@workspace/db";
 import { ListPurchasesResponse, CreatePurchaseBody, GetPurchaseParams, GetPurchaseResponse } from "@workspace/api-zod";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 
@@ -26,6 +26,9 @@ router.get("/purchases", async (req, res): Promise<void> => {
       paymentStatus: purchasesTable.paymentStatus,
       totalAmount: purchasesTable.totalAmount,
       notes: purchasesTable.notes,
+      verified: purchasesTable.verified,
+      verifiedBy: purchasesTable.verifiedBy,
+      verifiedAt: purchasesTable.verifiedAt,
       createdAt: purchasesTable.createdAt,
     })
     .from(purchasesTable)
@@ -34,7 +37,7 @@ router.get("/purchases", async (req, res): Promise<void> => {
   const purchases = whereClause
     ? await query.where(whereClause).orderBy(purchasesTable.createdAt)
     : await query.orderBy(purchasesTable.createdAt);
-  res.json(ListPurchasesResponse.parse(purchases));
+  res.json(purchases);
 });
 
 router.post("/purchases", authMiddleware, async (req, res): Promise<void> => {
@@ -134,6 +137,35 @@ router.get("/purchases/:id", async (req, res): Promise<void> => {
     .where(eq(purchaseLinesTable.purchaseId, params.data.id));
 
   res.json(GetPurchaseResponse.parse({ purchase, lines }));
+});
+
+router.patch("/purchases/:id/verify", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [purchase] = await db.update(purchasesTable).set({ verified: true, verifiedBy: (req as any).userId, verifiedAt: new Date() }).where(eq(purchasesTable.id, id)).returning();
+  if (!purchase) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("purchases", purchase.id, "verify", null, purchase);
+  const [vendor] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, purchase.vendorId));
+  res.json({ ...purchase, vendorName: vendor?.name ?? "" });
+});
+
+router.patch("/purchases/:id/unverify", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [purchase] = await db.update(purchasesTable).set({ verified: false, verifiedBy: null, verifiedAt: null }).where(eq(purchasesTable.id, id)).returning();
+  if (!purchase) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("purchases", purchase.id, "unverify", null, purchase);
+  const [vendor] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, purchase.vendorId));
+  res.json({ ...purchase, vendorName: vendor?.name ?? "" });
+});
+
+router.delete("/purchases/:id", authMiddleware, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [existing] = await db.select().from(purchasesTable).where(eq(purchasesTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
+  await db.delete(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, id));
+  await db.delete(purchasesTable).where(eq(purchasesTable.id, id));
+  await createAuditLog("purchases", id, "delete", existing, null);
+  res.json({ success: true });
 });
 
 export default router;

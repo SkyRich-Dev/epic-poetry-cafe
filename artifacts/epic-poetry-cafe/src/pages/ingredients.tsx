@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { useListIngredients, useCreateIngredient, useUpdateIngredient, useListCategories } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
 import { Plus, Edit } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../lib/auth';
 
 export default function Ingredients() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { data: ingredients, isLoading } = useListIngredients();
   const { data: categories } = useListCategories({ type: 'ingredient' });
   const createMut = useCreateIngredient();
@@ -29,6 +32,15 @@ export default function Ingredients() {
     } catch(e) { console.error(e); }
   };
 
+  const handleVerify = async (id: number) => {
+    await apiVerify('ingredients', id);
+    queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });
+  };
+  const handleUnverify = async (id: number) => {
+    await apiUnverify('ingredients', id);
+    queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Ingredients Master" description="Manage raw materials and their measurement units">
@@ -45,12 +57,13 @@ export default function Ingredients() {
               <th className="px-6 py-4">Base UOM</th>
               <th className="px-6 py-4 text-right">Avg Cost</th>
               <th className="px-6 py-4 text-center">Status</th>
+              <th className="px-6 py-4 text-center">Verified</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
-            ) : ingredients?.map(item => (
+              <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
+            ) : ingredients?.map((item: any) => (
               <tr key={item.id} className="table-row-hover">
                 <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{item.code}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{item.name}</td>
@@ -59,6 +72,9 @@ export default function Ingredients() {
                 <td className="px-6 py-4 text-right font-medium">{formatCurrency(item.weightedAvgCost)}</td>
                 <td className="px-6 py-4 text-center">
                   <Badge variant={item.active ? "success" : "neutral"}>{item.active ? 'Active' : 'Inactive'}</Badge>
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <VerifyButton verified={!!item.verified} isAdmin={isAdmin} onVerify={() => handleVerify(item.id)} onUnverify={() => handleUnverify(item.id)} />
                 </td>
               </tr>
             ))}

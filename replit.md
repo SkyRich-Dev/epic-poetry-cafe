@@ -83,6 +83,16 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - Default users: admin / admin123 (admin role), manager / manager123 (manager role)
 - JWT stored in localStorage, sent as Authorization: Bearer header
 
+## Verification System
+
+- **Admin verification** on 6 modules: Ingredients, Menu Items, Sales, Purchases, Expenses, Waste
+- DB columns: `verified` (boolean, default false), `verifiedBy` (int, nullable), `verifiedAt` (timestamp, nullable)
+- API endpoints: `PATCH /:id/verify` and `PATCH /:id/unverify` (admin-only via `adminOnly` middleware)
+- Edit/delete guards: If `verified=true` AND `userRole !== "admin"` → 403 on PATCH/DELETE (including recipe updates for menu items)
+- Admin can always edit/delete regardless of verification status
+- Frontend: `VerifyButton` component in ui-extras.tsx; each table shows Verified column with toggle buttons for admin, read-only badges for non-admin
+- `apiVerify(module, id)` and `apiUnverify(module, id)` helper functions use `customFetch` directly (not generated hooks)
+
 ## Key Features
 
 - **Costing Engine**: Weighted average (default), latest, or standard cost methods. Uses UOM conversion factor (stock-to-recipe) for accurate recipe line costing.

@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { db, salesEntriesTable, menuItemsTable } from "@workspace/db";
 import { ListSalesResponse, CreateSalesEntryBody, UpdateSalesEntryParams, UpdateSalesEntryBody, DeleteSalesEntryParams, GetDailySalesSummaryQueryParams } from "@workspace/api-zod";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 
 const router: IRouter = Router();
@@ -25,6 +25,9 @@ router.get("/sales", async (req, res): Promise<void> => {
       discount: salesEntriesTable.discount,
       channel: salesEntriesTable.channel,
       notes: salesEntriesTable.notes,
+      verified: salesEntriesTable.verified,
+      verifiedBy: salesEntriesTable.verifiedBy,
+      verifiedAt: salesEntriesTable.verifiedAt,
       createdAt: salesEntriesTable.createdAt,
     })
     .from(salesEntriesTable)
@@ -33,7 +36,7 @@ router.get("/sales", async (req, res): Promise<void> => {
   const sales = whereClause
     ? await query.where(whereClause).orderBy(salesEntriesTable.createdAt)
     : await query.orderBy(salesEntriesTable.createdAt);
-  res.json(ListSalesResponse.parse(sales));
+  res.json(sales);
 });
 
 router.post("/sales", authMiddleware, async (req, res): Promise<void> => {
@@ -63,6 +66,7 @@ router.patch("/sales/:id", authMiddleware, async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [existing] = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.id, params.data.id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }
   const updates: any = { ...parsed.data };
   const qty = parsed.data.quantity ?? existing.quantity;
   const price = parsed.data.sellingPrice ?? existing.sellingPrice;
@@ -77,8 +81,29 @@ router.patch("/sales/:id", authMiddleware, async (req, res): Promise<void> => {
 router.delete("/sales/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = DeleteSalesEntryParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [existing] = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.id, params.data.id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
   await db.delete(salesEntriesTable).where(eq(salesEntriesTable.id, params.data.id));
   res.sendStatus(204);
+});
+
+router.patch("/sales/:id/verify", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [entry] = await db.update(salesEntriesTable).set({ verified: true, verifiedBy: (req as any).userId, verifiedAt: new Date() }).where(eq(salesEntriesTable.id, id)).returning();
+  if (!entry) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("sales", entry.id, "verify", null, entry);
+  const [menuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, entry.menuItemId));
+  res.json({ ...entry, menuItemName: menuItem?.name ?? "" });
+});
+
+router.patch("/sales/:id/unverify", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [entry] = await db.update(salesEntriesTable).set({ verified: false, verifiedBy: null, verifiedAt: null }).where(eq(salesEntriesTable.id, id)).returning();
+  if (!entry) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("sales", entry.id, "unverify", null, entry);
+  const [menuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, entry.menuItemId));
+  res.json({ ...entry, menuItemName: menuItem?.name ?? "" });
 });
 
 router.get("/sales/daily-summary", async (req, res): Promise<void> => {

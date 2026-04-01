@@ -21,6 +21,9 @@ export const expensesTable = pgTable("expenses", {
   recurringFrequency: text("recurring_frequency"),
   linkedPettyCashId: integer("linked_petty_cash_id"),
   createdBy: integer("created_by"),
+  verified: boolean("verified").notNull().default(false),
+  verifiedBy: integer("verified_by"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

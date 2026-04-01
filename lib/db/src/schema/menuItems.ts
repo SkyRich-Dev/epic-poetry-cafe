@@ -15,6 +15,9 @@ export const menuItemsTable = pgTable("menu_items", {
   takeawayPrice: doublePrecision("takeaway_price"),
   deliveryPrice: doublePrecision("delivery_price"),
   active: boolean("active").notNull().default(true),
+  verified: boolean("verified").notNull().default(false),
+  verifiedBy: integer("verified_by"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { db, wasteEntriesTable, ingredientsTable, menuItemsTable, categoriesTable, recipeLinesTable } from "@workspace/db";
 import { ListWasteEntriesResponse, CreateWasteEntryBody, UpdateWasteEntryParams, UpdateWasteEntryBody, GetWasteSummaryResponse } from "@workspace/api-zod";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 
@@ -32,6 +32,9 @@ router.get("/waste", async (req, res): Promise<void> => {
       department: wasteEntriesTable.department,
       notes: wasteEntriesTable.notes,
       approvalStatus: wasteEntriesTable.approvalStatus,
+      verified: wasteEntriesTable.verified,
+      verifiedBy: wasteEntriesTable.verifiedBy,
+      verifiedAt: wasteEntriesTable.verifiedAt,
       createdAt: wasteEntriesTable.createdAt,
     })
     .from(wasteEntriesTable)
@@ -46,7 +49,7 @@ router.get("/waste", async (req, res): Promise<void> => {
     return { ...e, menuItemName: null };
   });
 
-  res.json(ListWasteEntriesResponse.parse(result));
+  res.json(result);
 });
 
 router.post("/waste", authMiddleware, async (req, res): Promise<void> => {
@@ -105,17 +108,37 @@ router.patch("/waste/:id", authMiddleware, async (req, res): Promise<void> => {
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateWasteEntryBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const [existing] = await db.select().from(wasteEntriesTable).where(eq(wasteEntriesTable.id, params.data.id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }
   const [entry] = await db.update(wasteEntriesTable).set(parsed.data).where(eq(wasteEntriesTable.id, params.data.id)).returning();
-  if (!entry) { res.status(404).json({ error: "Not found" }); return; }
   res.json({ ...entry, ingredientName: null, menuItemName: null, categoryName: null });
 });
 
 router.delete("/waste/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = UpdateWasteEntryParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [existing] = await db.select().from(wasteEntriesTable).where(eq(wasteEntriesTable.id, params.data.id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
   const [entry] = await db.delete(wasteEntriesTable).where(eq(wasteEntriesTable.id, params.data.id)).returning();
-  if (!entry) { res.status(404).json({ error: "Not found" }); return; }
   res.json({ success: true });
+});
+
+router.patch("/waste/:id/verify", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [entry] = await db.update(wasteEntriesTable).set({ verified: true, verifiedBy: (req as any).userId, verifiedAt: new Date() }).where(eq(wasteEntriesTable.id, id)).returning();
+  if (!entry) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("waste", entry.id, "verify", null, entry);
+  res.json({ ...entry, ingredientName: null, menuItemName: null, categoryName: null });
+});
+
+router.patch("/waste/:id/unverify", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [entry] = await db.update(wasteEntriesTable).set({ verified: false, verifiedBy: null, verifiedAt: null }).where(eq(wasteEntriesTable.id, id)).returning();
+  if (!entry) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("waste", entry.id, "unverify", null, entry);
+  res.json({ ...entry, ingredientName: null, menuItemName: null, categoryName: null });
 });
 
 router.get("/waste/summary", async (_req, res): Promise<void> => {

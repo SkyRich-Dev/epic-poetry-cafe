@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { useListWasteEntries, useCreateWasteEntry, useListIngredients } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
 import { Plus, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../lib/auth';
 
 export default function Waste() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
@@ -31,6 +34,15 @@ export default function Waste() {
     } catch(e) { console.error(e); }
   };
 
+  const handleVerify = async (id: number) => {
+    await apiVerify('waste', id);
+    queryClient.invalidateQueries({ queryKey: ['/api/waste'] });
+  };
+  const handleUnverify = async (id: number) => {
+    await apiUnverify('waste', id);
+    queryClient.invalidateQueries({ queryKey: ['/api/waste'] });
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Waste Log" description="Track spoiled, expired, or damaged items">
@@ -48,18 +60,22 @@ export default function Waste() {
               <th className="px-6 py-4">Reason</th>
               <th className="px-6 py-4 text-right">Quantity</th>
               <th className="px-6 py-4 text-right">Cost Value</th>
+              <th className="px-6 py-4 text-center">Verified</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
-            ) : waste?.map(w => (
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
+            ) : waste?.map((w: any) => (
               <tr key={w.id} className="table-row-hover">
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(w.wasteDate)}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{w.ingredientName || w.menuItemName} <Badge variant="neutral" className="ml-2 px-1">{w.wasteType}</Badge></td>
                 <td className="px-6 py-4 text-muted-foreground">{w.reason}</td>
                 <td className="px-6 py-4 text-right">{Number(w.quantity).toFixed(2)} {w.uom}</td>
                 <td className="px-6 py-4 text-right font-medium text-rose-600">{formatCurrency(w.costValue)}</td>
+                <td className="px-6 py-4 text-center">
+                  <VerifyButton verified={!!w.verified} isAdmin={isAdmin} onVerify={() => handleVerify(w.id)} onUnverify={() => handleUnverify(w.id)} />
+                </td>
               </tr>
             ))}
           </tbody>

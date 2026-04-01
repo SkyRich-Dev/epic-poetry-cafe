@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { useListSales, useCreateSalesEntry, useListMenuItems } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
 import { Plus, Receipt } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../lib/auth';
 
 export default function Sales() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const params = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
@@ -35,6 +38,15 @@ export default function Sales() {
     } catch(e) { console.error(e); }
   };
 
+  const handleVerify = async (id: number) => {
+    await apiVerify('sales', id);
+    queryClient.invalidateQueries({ queryKey: ['/api/sales'] });
+  };
+  const handleUnverify = async (id: number) => {
+    await apiUnverify('sales', id);
+    queryClient.invalidateQueries({ queryKey: ['/api/sales'] });
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Sales Entry" description="Log daily aggregated sales or individual receipts">
@@ -53,14 +65,15 @@ export default function Sales() {
               <th className="px-6 py-4 text-right">Qty</th>
               <th className="px-6 py-4 text-right">Price</th>
               <th className="px-6 py-4 text-right">Total</th>
+              <th className="px-6 py-4 text-center">Verified</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">Loading sales...</td></tr>
+              <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">Loading sales...</td></tr>
             ) : sales?.length === 0 ? (
-               <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No sales recorded.</td></tr>
-            ) : sales?.map(s => (
+               <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No sales recorded.</td></tr>
+            ) : sales?.map((s: any) => (
               <tr key={s.id} className="table-row-hover">
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(s.salesDate)}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{s.menuItemName}</td>
@@ -68,6 +81,9 @@ export default function Sales() {
                 <td className="px-6 py-4 text-right">{Number(s.quantity).toFixed(2)}</td>
                 <td className="px-6 py-4 text-right">{formatCurrency(s.sellingPrice)}</td>
                 <td className="px-6 py-4 text-right font-medium text-emerald-600">{formatCurrency(s.totalAmount)}</td>
+                <td className="px-6 py-4 text-center">
+                  <VerifyButton verified={!!s.verified} isAdmin={isAdmin} onVerify={() => handleVerify(s.id)} onUnverify={() => handleUnverify(s.id)} />
+                </td>
               </tr>
             ))}
           </tbody>

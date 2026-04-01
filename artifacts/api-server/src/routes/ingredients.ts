@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, ingredientsTable, categoriesTable, ingredientVendorMappingTable, vendorsTable } from "@workspace/db";
 import { ListIngredientsResponse, CreateIngredientBody, GetIngredientParams, GetIngredientResponse, UpdateIngredientParams, UpdateIngredientBody, ListIngredientVendorMappingsParams, ListIngredientVendorMappingsResponse, CreateIngredientVendorMappingParams, CreateIngredientVendorMappingBody } from "@workspace/api-zod";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 
@@ -29,11 +29,14 @@ router.get("/ingredients", async (_req, res): Promise<void> => {
       perishable: ingredientsTable.perishable,
       shelfLifeDays: ingredientsTable.shelfLifeDays,
       active: ingredientsTable.active,
+      verified: ingredientsTable.verified,
+      verifiedBy: ingredientsTable.verifiedBy,
+      verifiedAt: ingredientsTable.verifiedAt,
       createdAt: ingredientsTable.createdAt,
     })
     .from(ingredientsTable)
     .leftJoin(categoriesTable, eq(ingredientsTable.categoryId, categoriesTable.id));
-  res.json(ListIngredientsResponse.parse(ingredients));
+  res.json(ingredients);
 });
 
 router.post("/ingredients", authMiddleware, async (req, res): Promise<void> => {
@@ -88,8 +91,9 @@ router.patch("/ingredients/:id", authMiddleware, async (req, res): Promise<void>
   const parsed = UpdateIngredientBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [old] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, params.data.id));
+  if (!old) { res.status(404).json({ error: "Not found" }); return; }
+  if (old.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }
   const [ing] = await db.update(ingredientsTable).set(parsed.data).where(eq(ingredientsTable.id, params.data.id)).returning();
-  if (!ing) { res.status(404).json({ error: "Not found" }); return; }
   await createAuditLog("ingredients", ing.id, "update", old, ing);
   res.json({ ...ing, categoryName: null });
 });
@@ -97,10 +101,28 @@ router.patch("/ingredients/:id", authMiddleware, async (req, res): Promise<void>
 router.delete("/ingredients/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = UpdateIngredientParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [existing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, params.data.id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
   const [ing] = await db.delete(ingredientsTable).where(eq(ingredientsTable.id, params.data.id)).returning();
-  if (!ing) { res.status(404).json({ error: "Not found" }); return; }
   await createAuditLog("ingredients", ing.id, "delete", ing, null);
   res.json({ success: true });
+});
+
+router.patch("/ingredients/:id/verify", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [ing] = await db.update(ingredientsTable).set({ verified: true, verifiedBy: (req as any).userId, verifiedAt: new Date() }).where(eq(ingredientsTable.id, id)).returning();
+  if (!ing) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("ingredients", ing.id, "verify", null, ing);
+  res.json({ ...ing, categoryName: null });
+});
+
+router.patch("/ingredients/:id/unverify", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [ing] = await db.update(ingredientsTable).set({ verified: false, verifiedBy: null, verifiedAt: null }).where(eq(ingredientsTable.id, id)).returning();
+  if (!ing) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("ingredients", ing.id, "unverify", null, ing);
+  res.json({ ...ing, categoryName: null });
 });
 
 router.get("/ingredients/:id/vendor-mappings", async (req, res): Promise<void> => {

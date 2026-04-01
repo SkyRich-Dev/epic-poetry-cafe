@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, menuItemsTable, recipeLinesTable, categoriesTable, ingredientsTable, systemConfigTable } from "@workspace/db";
 import { ListMenuItemsResponse, CreateMenuItemBody, GetMenuItemParams, UpdateMenuItemParams, UpdateMenuItemBody, GetRecipeParams, SaveRecipeParams, SaveRecipeBody, GetMenuItemCostingParams } from "@workspace/api-zod";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 
@@ -53,6 +53,9 @@ router.get("/menu-items", async (_req, res): Promise<void> => {
       takeawayPrice: menuItemsTable.takeawayPrice,
       deliveryPrice: menuItemsTable.deliveryPrice,
       active: menuItemsTable.active,
+      verified: menuItemsTable.verified,
+      verifiedBy: menuItemsTable.verifiedBy,
+      verifiedAt: menuItemsTable.verifiedAt,
       createdAt: menuItemsTable.createdAt,
     })
     .from(menuItemsTable)
@@ -71,7 +74,7 @@ router.get("/menu-items", async (_req, res): Promise<void> => {
     });
   }
 
-  res.json(ListMenuItemsResponse.parse(result));
+  res.json(result);
 });
 
 router.post("/menu-items", authMiddleware, async (req, res): Promise<void> => {
@@ -158,8 +161,9 @@ router.patch("/menu-items/:id", authMiddleware, async (req, res): Promise<void> 
   const parsed = UpdateMenuItemBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [old] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, params.data.id));
+  if (!old) { res.status(404).json({ error: "Not found" }); return; }
+  if (old.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }
   const [item] = await db.update(menuItemsTable).set(parsed.data).where(eq(menuItemsTable.id, params.data.id)).returning();
-  if (!item) { res.status(404).json({ error: "Not found" }); return; }
   await createAuditLog("menu_items", item.id, "update", old, item);
   const costing = await calculateItemCost(item.id);
   const margin = item.sellingPrice - costing.total;
@@ -170,11 +174,29 @@ router.patch("/menu-items/:id", authMiddleware, async (req, res): Promise<void> 
 router.delete("/menu-items/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = GetMenuItemParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [existing] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, params.data.id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
   await db.delete(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, params.data.id));
   const [item] = await db.delete(menuItemsTable).where(eq(menuItemsTable.id, params.data.id)).returning();
-  if (!item) { res.status(404).json({ error: "Not found" }); return; }
   await createAuditLog("menu_items", item.id, "delete", item, null);
   res.json({ success: true });
+});
+
+router.patch("/menu-items/:id/verify", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [item] = await db.update(menuItemsTable).set({ verified: true, verifiedBy: (req as any).userId, verifiedAt: new Date() }).where(eq(menuItemsTable.id, id)).returning();
+  if (!item) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("menu_items", item.id, "verify", null, item);
+  res.json({ ...item, categoryName: null, productionCost: 0, margin: 0, marginPercent: 0 });
+});
+
+router.patch("/menu-items/:id/unverify", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [item] = await db.update(menuItemsTable).set({ verified: false, verifiedBy: null, verifiedAt: null }).where(eq(menuItemsTable.id, id)).returning();
+  if (!item) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("menu_items", item.id, "unverify", null, item);
+  res.json({ ...item, categoryName: null, productionCost: 0, margin: 0, marginPercent: 0 });
 });
 
 router.get("/menu-items/:id/recipe", async (req, res): Promise<void> => {
@@ -211,6 +233,9 @@ router.put("/menu-items/:id/recipe", authMiddleware, async (req, res): Promise<v
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = SaveRecipeBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const [menuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, params.data.id));
+  if (!menuItem) { res.status(404).json({ error: "Menu item not found" }); return; }
+  if (menuItem.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify recipe." }); return; }
 
   await db.delete(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, params.data.id));
 

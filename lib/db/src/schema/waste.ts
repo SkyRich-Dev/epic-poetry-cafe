@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, doublePrecision, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, boolean, integer, doublePrecision, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { ingredientsTable } from "./ingredients";
@@ -22,6 +22,9 @@ export const wasteEntriesTable = pgTable("waste_entries", {
   approvalStatus: text("approval_status").notNull().default("pending"),
   approvedBy: integer("approved_by"),
   createdBy: integer("created_by"),
+  verified: boolean("verified").notNull().default(false),
+  verifiedBy: integer("verified_by"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

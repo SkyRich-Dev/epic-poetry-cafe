@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { useListMenuItems, useCreateMenuItem, useUpdateMenuItem, useGetRecipe, useSaveRecipe, useGetMenuItemCosting, useListIngredients, useListCategories } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, cn } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, cn, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
 import { Plus, Edit, ChefHat, Tag, DollarSign, Calculator, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../lib/auth';
 
 export default function MenuItems() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { data: menuItems, isLoading } = useListMenuItems();
   const { data: categories } = useListCategories({ type: 'menu' });
   const createMut = useCreateMenuItem();
@@ -35,6 +38,15 @@ export default function MenuItems() {
     setRecipeModalOpen(true);
   };
 
+  const handleVerify = async (id: number) => {
+    await apiVerify('menu-items', id);
+    queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
+  };
+  const handleUnverify = async (id: number) => {
+    await apiUnverify('menu-items', id);
+    queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader title="Menu & Recipes" description="Manage your offerings, prices, and complex recipes">
@@ -51,15 +63,16 @@ export default function MenuItems() {
               <th className="px-6 py-4 text-right">Prod. Cost</th>
               <th className="px-6 py-4 text-right">Margin</th>
               <th className="px-6 py-4 text-center">Status</th>
+              <th className="px-6 py-4 text-center">Verified</th>
               <th className="px-6 py-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">Loading menu items...</td></tr>
+              <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">Loading menu items...</td></tr>
             ) : menuItems?.length === 0 ? (
-               <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No menu items found. Create your first one!</td></tr>
-            ) : menuItems?.map(item => (
+               <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">No menu items found. Create your first one!</td></tr>
+            ) : menuItems?.map((item: any) => (
               <tr key={item.id} className="table-row-hover">
                 <td className="px-6 py-4 font-medium text-foreground">{item.name}</td>
                 <td className="px-6 py-4 text-muted-foreground">{item.categoryName || '-'}</td>
@@ -72,6 +85,9 @@ export default function MenuItems() {
                 </td>
                 <td className="px-6 py-4 text-center">
                   <Badge variant={item.active ? "success" : "neutral"}>{item.active ? 'Active' : 'Inactive'}</Badge>
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <VerifyButton verified={!!item.verified} isAdmin={isAdmin} onVerify={() => handleVerify(item.id)} onUnverify={() => handleUnverify(item.id)} />
                 </td>
                 <td className="px-6 py-4 text-right flex justify-end gap-2">
                   <Button variant="outline" className="px-3 py-1.5 h-auto text-xs" onClick={() => openRecipe(item)}>
@@ -114,7 +130,6 @@ export default function MenuItems() {
   );
 }
 
-// Subcomponent for Recipe Builder due to complexity
 function RecipeBuilderModal({ item, onClose }: { item: any, onClose: () => void }) {
   const queryClient = useQueryClient();
   const { data: initialRecipe, isLoading } = useGetRecipe(item.id);
@@ -124,7 +139,6 @@ function RecipeBuilderModal({ item, onClose }: { item: any, onClose: () => void 
 
   const [lines, setLines] = useState<any[]>([]);
   
-  // Set lines once loaded
   React.useEffect(() => {
     if (initialRecipe) {
       setLines(initialRecipe.map((r: any) => ({
@@ -141,7 +155,6 @@ function RecipeBuilderModal({ item, onClose }: { item: any, onClose: () => void 
   const updateLine = (index: number, field: string, value: any) => {
     const newLines = [...lines];
     newLines[index] = { ...newLines[index], [field]: value };
-    // auto-fill UOM if ingredient selected
     if (field === 'ingredientId') {
       const ing = ingredients?.find(i => i.id === value);
       if (ing) newLines[index].uom = ing.recipeUom;
@@ -164,7 +177,6 @@ function RecipeBuilderModal({ item, onClose }: { item: any, onClose: () => void 
       
       {isLoading ? <div className="p-8 text-center">Loading recipe...</div> : (
         <div className="space-y-6">
-          {/* Costing Summary Card */}
           <div className="bg-primary/5 border border-primary/20 rounded-xl p-5 flex flex-wrap gap-6 items-center justify-between">
             <div className="flex gap-8">
               <div>

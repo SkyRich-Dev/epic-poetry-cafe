@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, CalendarDays, RotateCcw } from 'lucide-react';
+import { X, CalendarDays, RotateCcw, ShieldCheck, ShieldX } from 'lucide-react';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { customFetch } from '@workspace/api-client-react/custom-fetch';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -153,6 +154,38 @@ export function DateFilter({ fromDate, toDate, onChange }: { fromDate: string; t
       )}
     </div>
   );
+}
+
+export function VerifyBadge({ verified }: { verified: boolean }) {
+  if (!verified) return null;
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
+      <ShieldCheck size={12} /> Verified
+    </span>
+  );
+}
+
+export function VerifyButton({ verified, isAdmin, onVerify, onUnverify }: { verified: boolean; isAdmin: boolean; onVerify: () => void; onUnverify: () => void }) {
+  if (!isAdmin) return verified ? <VerifyBadge verified={true} /> : null;
+  return verified ? (
+    <button onClick={onUnverify} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 hover:bg-rose-500/10 hover:text-rose-700 hover:border-rose-500/20 transition-colors" title="Click to unverify">
+      <ShieldCheck size={12} /> Verified
+    </button>
+  ) : (
+    <button onClick={onVerify} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-muted text-muted-foreground border border-border hover:bg-primary/10 hover:text-primary hover:border-primary/20 transition-colors" title="Click to verify">
+      <ShieldX size={12} /> Unverified
+    </button>
+  );
+}
+
+export async function apiVerify(module: string, id: number): Promise<void> {
+  const base = import.meta.env.BASE_URL || '/';
+  await customFetch(`${base}api/${module}/${id}/verify`, { method: 'PATCH' });
+}
+
+export async function apiUnverify(module: string, id: number): Promise<void> {
+  const base = import.meta.env.BASE_URL || '/';
+  await customFetch(`${base}api/${module}/${id}/unverify`, { method: 'PATCH' });
 }
 
 export function Badge({ children, variant = 'default', className }: any) {
