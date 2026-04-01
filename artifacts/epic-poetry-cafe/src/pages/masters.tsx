@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useListCategories, useCreateCategory, useListUom, useGetConfig, useUpdateConfig, useListUsers, useCreateUser, useUpdateUser, useListAuditLogs } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, Badge } from '../components/ui-extras';
-import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download } from 'lucide-react';
+import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 const TABS = [
@@ -43,7 +43,9 @@ function CategoriesConfigTab() {
   const updateConfigMut = useUpdateConfig();
 
   const [catModal, setCatModal] = useState(false);
+  const [catEditId, setCatEditId] = useState<number | null>(null);
   const [catForm, setCatForm] = useState({ name: '', type: 'ingredient', active: true });
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
   const [configModal, setConfigModal] = useState(false);
   const [configForm, setConfigForm] = useState(DEFAULT_CONFIG);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -63,13 +65,49 @@ function CategoriesConfigTab() {
     }
   }, [config]);
 
+  const openAddCat = () => {
+    setCatEditId(null);
+    setCatForm({ name: '', type: 'ingredient', active: true });
+    setCatModal(true);
+  };
+
+  const openEditCat = (cat: any) => {
+    setCatEditId(cat.id);
+    setCatForm({ name: cat.name, type: cat.type, active: cat.active ?? true });
+    setCatModal(true);
+  };
+
   const handleSaveCat = async () => {
     try {
-      await createCatMut.mutateAsync({ data: catForm as any });
+      if (catEditId) {
+        const base = import.meta.env.BASE_URL || '/';
+        const token = localStorage.getItem('token');
+        await fetch(`${base}api/categories/${catEditId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(catForm),
+        });
+      } else {
+        await createCatMut.mutateAsync({ data: catForm as any });
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/categories'] });
       setCatModal(false);
     } catch(e) {}
-  }
+  };
+
+  const handleDeleteCat = async () => {
+    if (!deleteConfirm) return;
+    try {
+      const base = import.meta.env.BASE_URL || '/';
+      const token = localStorage.getItem('token');
+      await fetch(`${base}api/categories/${deleteConfirm.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/categories'] });
+      setDeleteConfirm(null);
+    } catch(e) {}
+  };
 
   const handleSaveConfig = async () => {
     setConfigError(null);
@@ -88,7 +126,7 @@ function CategoriesConfigTab() {
         <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden flex flex-col">
           <div className="p-6 border-b border-border flex justify-between items-center bg-muted/20">
             <h3 className="font-display font-semibold text-lg">Categories</h3>
-            <Button size="sm" variant="outline" onClick={() => setCatModal(true)}><Plus size={14}/> Add</Button>
+            <Button size="sm" variant="outline" onClick={openAddCat}><Plus size={14}/> Add</Button>
           </div>
           <div className="p-0 flex-1 max-h-[400px] overflow-y-auto">
             <table className="w-full text-sm text-left">
@@ -96,7 +134,13 @@ function CategoriesConfigTab() {
                 {categories?.map(c => (
                   <tr key={c.id} className="hover:bg-muted/40 transition-colors">
                     <td className="px-6 py-3 font-medium">{c.name}</td>
-                    <td className="px-6 py-3 text-right"><Badge variant="neutral">{c.type}</Badge></td>
+                    <td className="px-6 py-3"><Badge variant="neutral">{c.type}</Badge></td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => openEditCat(c)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>
+                        <button onClick={() => setDeleteConfirm({ id: c.id, name: c.name })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -149,8 +193,8 @@ function CategoriesConfigTab() {
         </div>
       </div>
 
-      <Modal isOpen={catModal} onClose={() => setCatModal(false)} title="Add Category"
-        footer={<><Button variant="ghost" onClick={() => setCatModal(false)}>Cancel</Button><Button onClick={handleSaveCat}>Save</Button></>}>
+      <Modal isOpen={catModal} onClose={() => setCatModal(false)} title={catEditId ? "Edit Category" : "Add Category"}
+        footer={<><Button variant="ghost" onClick={() => setCatModal(false)}>Cancel</Button><Button onClick={handleSaveCat}>{catEditId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-4 py-2">
           <div><Label>Name</Label><Input value={catForm.name} onChange={(e:any) => setCatForm({...catForm, name: e.target.value})} /></div>
           <div>
@@ -162,6 +206,13 @@ function CategoriesConfigTab() {
             </select>
           </div>
         </div>
+      </Modal>
+
+      <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Category"
+        footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDeleteCat}>Delete</Button></>}>
+        <p className="py-2 text-sm text-muted-foreground">
+          Are you sure you want to delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This action cannot be undone.
+        </p>
       </Modal>
 
       <Modal isOpen={configModal} onClose={() => { setConfigModal(false); setConfigError(null); }} title="Edit System Configuration" maxWidth="max-w-lg"
