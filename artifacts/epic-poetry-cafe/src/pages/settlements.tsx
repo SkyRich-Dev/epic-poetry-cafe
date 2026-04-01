@@ -155,7 +155,7 @@ export default function Settlements() {
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="New Daily Settlement"
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>Save Settlement</Button></>}>
+        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending || difference > 0.01}>Save Settlement</Button></>}>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -196,7 +196,7 @@ export default function Settlements() {
             </div>
           </div>
 
-          <div className={`rounded-xl p-4 ${Math.abs(difference) < 0.01 ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
+          <div className={`rounded-xl p-4 ${Math.abs(difference) < 0.01 ? 'bg-emerald-50 border border-emerald-200' : difference > 0.01 ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'}`}>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <p className="text-xs text-muted-foreground">Net Sales</p>
@@ -208,12 +208,15 @@ export default function Settlements() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Difference</p>
-                <p className={`font-bold text-lg ${Math.abs(difference) < 0.01 ? 'text-emerald-600' : difference > 0 ? 'text-amber-600' : 'text-blue-600'}`}>
+                <p className={`font-bold text-lg ${Math.abs(difference) < 0.01 ? 'text-emerald-600' : difference > 0 ? 'text-red-600' : 'text-blue-600'}`}>
                   {formatCurrency(Math.abs(difference))}
                   {difference > 0.01 ? ' Short' : difference < -0.01 ? ' Excess' : ' Matched'}
                 </p>
               </div>
             </div>
+            {difference > 0.01 && (
+              <p className="text-xs text-red-600 text-center mt-2 font-medium">Settlement is short. Total must be equal to or greater than net sales to save.</p>
+            )}
           </div>
         </div>
       </Modal>

@@ -74,6 +74,11 @@ router.post("/settlements", authMiddleware, async (req, res): Promise<void> => {
   if (differenceAmount > 0.01) differenceType = "short";
   else if (differenceAmount < -0.01) differenceType = "excess";
 
+  if (differenceType === "short") {
+    res.status(400).json({ error: `Settlement is short by ₹${differenceAmount.toFixed(2)}. Settlement total must be equal to or greater than net sales.` });
+    return;
+  }
+
   const userId = (req as any).userId || null;
 
   const [settlement] = await db.insert(dailySalesSettlementsTable).values({
@@ -153,6 +158,11 @@ router.patch("/settlements/:id", authMiddleware, async (req, res): Promise<void>
   let differenceType = "matched";
   if (differenceAmount > 0.01) differenceType = "short";
   else if (differenceAmount < -0.01) differenceType = "excess";
+
+  if (differenceType === "short") {
+    res.status(400).json({ error: `Settlement is short by ₹${differenceAmount.toFixed(2)}. Settlement total must be equal to or greater than net sales.` });
+    return;
+  }
 
   const [settlement] = await db.update(dailySalesSettlementsTable).set({
     settlementDate: date,
