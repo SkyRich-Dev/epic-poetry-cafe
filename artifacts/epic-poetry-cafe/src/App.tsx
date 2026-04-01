@@ -36,7 +36,7 @@ const queryClient = new QueryClient({
   },
 });
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+function ProtectedRoute({ component: Component, adminOnly }: { component: React.ComponentType; adminOnly?: boolean }) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
@@ -45,6 +45,18 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   if (!user) {
     return <Login />;
+  }
+
+  if (adminOnly && user.role !== 'admin') {
+    return (
+      <Layout>
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="text-6xl mb-4">🔒</div>
+          <h2 className="text-2xl font-bold mb-2">Access Restricted</h2>
+          <p className="text-muted-foreground">This page is only accessible to administrators.</p>
+        </div>
+      </Layout>
+    );
   }
 
   return (
@@ -66,11 +78,11 @@ function Router() {
       <Route path="/inventory" component={() => <ProtectedRoute component={Inventory} />} />
       <Route path="/expenses" component={() => <ProtectedRoute component={Expenses} />} />
       <Route path="/waste" component={() => <ProtectedRoute component={Waste} />} />
-      <Route path="/trials" component={() => <ProtectedRoute component={Trials} />} />
-      <Route path="/reports" component={() => <ProtectedRoute component={Reports} />} />
-      <Route path="/masters" component={() => <ProtectedRoute component={Masters} />} />
-      <Route path="/analytics" component={() => <ProtectedRoute component={AnalyticsPage} />} />
-      <Route path="/upload" component={() => <ProtectedRoute component={UploadPage} />} />
+      <Route path="/trials" component={() => <ProtectedRoute component={Trials} adminOnly />} />
+      <Route path="/reports" component={() => <ProtectedRoute component={Reports} adminOnly />} />
+      <Route path="/masters" component={() => <ProtectedRoute component={Masters} adminOnly />} />
+      <Route path="/analytics" component={() => <ProtectedRoute component={AnalyticsPage} adminOnly />} />
+      <Route path="/upload" component={() => <ProtectedRoute component={UploadPage} adminOnly />} />
       <Route path="/settlements" component={() => <ProtectedRoute component={Settlements} />} />
       <Route path="/petty-cash" component={() => <ProtectedRoute component={PettyCash} />} />
       <Route path="/employees" component={() => <ProtectedRoute component={EmployeesPage} />} />

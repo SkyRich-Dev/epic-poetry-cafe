@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useGetMe, User } from '@workspace/api-client-react';
 import { setAuthTokenGetter } from '@workspace/api-client-react/custom-fetch';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface AuthContextType {
   user: User | null;
@@ -14,6 +15,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     setAuthTokenGetter(() => localStorage.getItem('token'));
@@ -35,10 +37,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     localStorage.removeItem('token');
     setToken(null);
+    queryClient.clear();
   };
 
+  const effectiveUser = token ? (user || null) : null;
+
   return (
-    <AuthContext.Provider value={{ user: user || null, isLoading, token, login, logout }}>
+    <AuthContext.Provider value={{ user: effectiveUser, isLoading: token ? isLoading : false, token, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
