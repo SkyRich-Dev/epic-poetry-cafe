@@ -131,14 +131,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
           ))}
         </div>
 
-        <div className="p-4 border-t border-sidebar-border mt-auto">
+        <div className="p-4 border-t border-sidebar-border mt-auto flex-shrink-0">
           <div className="flex items-center justify-between px-3 py-2">
             <div className="flex flex-col">
               <span className="text-sm font-semibold text-white">{user?.fullName || 'User'}</span>
               <span className="text-xs text-sidebar-foreground/60 capitalize">{user?.role || 'Staff'}</span>
             </div>
-            <button onClick={logout} className="p-2 rounded-lg text-sidebar-foreground/60 hover:text-white hover:bg-sidebar-accent transition-colors" title="Logout">
-              <LogOut size={18} />
+            <button onClick={logout} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sidebar-foreground/60 hover:text-white hover:bg-sidebar-accent transition-colors text-sm" title="Logout">
+              <LogOut size={16} />
+              <span>Logout</span>
             </button>
           </div>
         </div>
