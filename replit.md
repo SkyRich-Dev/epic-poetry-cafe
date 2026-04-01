@@ -110,3 +110,8 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **PATCH operations**: All update schemas use .partial() for optional field updates
 - **Role-based Dashboard**: Admin sees "Owner's Dashboard" with full P&L, settlements, insights, top items. Manager/viewer sees "Operations Dashboard" with only: today's sales (with yesterday & last week same day comparisons), today's expenses, today's waste, petty cash balance, petty cash spent today
 - **Menu Cost Visibility**: Production cost and margin columns on Menu Items page are hidden from non-admin users
+- **Employee Module**: Full employee management with auto-generated codes (EMP0001...), contact, position, salary, part-time/full-time. Admin-only CRUD; non-admin sees only name, code, position, type (no salary/contact)
+- **Shifts**: Define shifts with name, start/end time. Used in attendance marking
+- **Attendance**: Daily attendance with bulk save — statuses: present, half-day, absent, week-off. All users can mark attendance
+- **Leave Management**: Record paid/unpaid leaves per employee per date. Week-off = paid leave (no deduction). All users can record leaves
+- **Salary Generation**: Admin-only. Auto-computes net salary from base salary, attendance, leaves. Deductions for unpaid leaves, absences, and half-days (0.5× per-day rate). DB-level date filtering with LIKE on YYYY-MM prefix

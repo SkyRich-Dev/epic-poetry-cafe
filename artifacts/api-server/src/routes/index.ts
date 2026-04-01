@@ -20,6 +20,7 @@ import auditLogsRouter from "./auditLogs";
 import uploadRouter from "./upload";
 import settlementsRouter from "./settlements";
 import pettyCashRouter from "./pettyCash";
+import employeesRouter from "./employees";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(auditLogsRouter);
 router.use(uploadRouter);
 router.use(settlementsRouter);
 router.use(pettyCashRouter);
+router.use(employeesRouter);
 
 export default router;

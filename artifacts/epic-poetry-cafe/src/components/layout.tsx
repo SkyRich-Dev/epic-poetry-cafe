@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Coffee, Users, Package, ShoppingCart, 
   Receipt, FileText, Settings, LogOut, Menu, X, Trash2, 
   FlaskConical, ClipboardList, PackageSearch, Upload, BarChart3,
-  Banknote, Wallet, Store
+  Banknote, Wallet, Store, UserCheck, CalendarDays
 } from 'lucide-react';
 import { cn } from './ui-extras';
 
@@ -38,6 +38,13 @@ const navGroups: NavGroup[] = [
       { name: 'Inventory', path: '/inventory', icon: PackageSearch },
       { name: 'Vendors', path: '/vendors', icon: Store },
       { name: 'Trials & R&D', path: '/trials', icon: FlaskConical, adminOnly: true },
+    ]
+  },
+  {
+    title: 'Team',
+    items: [
+      { name: 'Employees', path: '/employees', icon: Users },
+      { name: 'Attendance', path: '/attendance', icon: UserCheck },
     ]
   },
   {

@@ -1,0 +1,301 @@
+import { Router, type IRouter } from "express";
+import { eq, and, like } from "drizzle-orm";
+import { db, employeesTable, shiftsTable, attendanceTable, leavesTable, salaryRecordsTable } from "@workspace/db";
+import { authMiddleware, adminOnly } from "../lib/auth";
+import { generateCode } from "../lib/codeGenerator";
+import { createAuditLog } from "../lib/audit";
+
+const router: IRouter = Router();
+
+router.get("/employees", authMiddleware, async (req, res): Promise<void> => {
+  const employees = await db.select().from(employeesTable).orderBy(employeesTable.name);
+  const role = (req as any).userRole;
+  if (role !== "admin") {
+    res.json(employees.map(e => ({ id: e.id, code: e.code, name: e.name, position: e.position, employmentType: e.employmentType, active: e.active })));
+    return;
+  }
+  res.json(employees);
+});
+
+router.post("/employees", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const { name, contactNumber, position, salary, employmentType } = req.body;
+  if (!name || !position) { res.status(400).json({ error: "Name and position are required" }); return; }
+  const code = await generateCode("EMP", "employees");
+  const [employee] = await db.insert(employeesTable).values({
+    code, name, contactNumber: contactNumber || null, position, salary: salary || 0,
+    employmentType: employmentType || "full-time",
+  }).returning();
+  await createAuditLog("employees", employee.id, "create", null, employee);
+  res.json(employee);
+});
+
+router.patch("/employees/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const { name, contactNumber, position, salary, employmentType, active } = req.body;
+  const updates: any = {};
+  if (name !== undefined) updates.name = name;
+  if (contactNumber !== undefined) updates.contactNumber = contactNumber;
+  if (position !== undefined) updates.position = position;
+  if (salary !== undefined) updates.salary = salary;
+  if (employmentType !== undefined) updates.employmentType = employmentType;
+  if (active !== undefined) updates.active = active;
+  const [employee] = await db.update(employeesTable).set(updates).where(eq(employeesTable.id, id)).returning();
+  if (!employee) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(employee);
+});
+
+router.delete("/employees/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [employee] = await db.delete(employeesTable).where(eq(employeesTable.id, id)).returning();
+  if (!employee) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ success: true });
+});
+
+router.get("/shifts", authMiddleware, async (_req, res): Promise<void> => {
+  const shifts = await db.select().from(shiftsTable).orderBy(shiftsTable.name);
+  res.json(shifts);
+});
+
+router.post("/shifts", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const { name, startTime, endTime } = req.body;
+  if (!name || !startTime || !endTime) { res.status(400).json({ error: "Name, startTime, endTime required" }); return; }
+  const [shift] = await db.insert(shiftsTable).values({ name, startTime, endTime }).returning();
+  res.json(shift);
+});
+
+router.patch("/shifts/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const updates: any = {};
+  if (req.body.name !== undefined) updates.name = req.body.name;
+  if (req.body.startTime !== undefined) updates.startTime = req.body.startTime;
+  if (req.body.endTime !== undefined) updates.endTime = req.body.endTime;
+  if (req.body.active !== undefined) updates.active = req.body.active;
+  const [shift] = await db.update(shiftsTable).set(updates).where(eq(shiftsTable.id, id)).returning();
+  if (!shift) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(shift);
+});
+
+router.delete("/shifts/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [shift] = await db.delete(shiftsTable).where(eq(shiftsTable.id, id)).returning();
+  if (!shift) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ success: true });
+});
+
+router.get("/attendance", authMiddleware, async (req, res): Promise<void> => {
+  const { date } = req.query;
+  let records;
+  if (date) {
+    records = await db.select({
+      id: attendanceTable.id,
+      employeeId: attendanceTable.employeeId,
+      employeeName: employeesTable.name,
+      employeeCode: employeesTable.code,
+      attendanceDate: attendanceTable.attendanceDate,
+      shiftId: attendanceTable.shiftId,
+      shiftName: shiftsTable.name,
+      status: attendanceTable.status,
+      markedBy: attendanceTable.markedBy,
+      createdAt: attendanceTable.createdAt,
+    }).from(attendanceTable)
+      .leftJoin(employeesTable, eq(attendanceTable.employeeId, employeesTable.id))
+      .leftJoin(shiftsTable, eq(attendanceTable.shiftId, shiftsTable.id))
+      .where(eq(attendanceTable.attendanceDate, date as string))
+      .orderBy(employeesTable.name);
+  } else {
+    records = await db.select({
+      id: attendanceTable.id,
+      employeeId: attendanceTable.employeeId,
+      employeeName: employeesTable.name,
+      employeeCode: employeesTable.code,
+      attendanceDate: attendanceTable.attendanceDate,
+      shiftId: attendanceTable.shiftId,
+      shiftName: shiftsTable.name,
+      status: attendanceTable.status,
+      markedBy: attendanceTable.markedBy,
+      createdAt: attendanceTable.createdAt,
+    }).from(attendanceTable)
+      .leftJoin(employeesTable, eq(attendanceTable.employeeId, employeesTable.id))
+      .leftJoin(shiftsTable, eq(attendanceTable.shiftId, shiftsTable.id))
+      .orderBy(attendanceTable.attendanceDate);
+  }
+  res.json(records);
+});
+
+router.post("/attendance", authMiddleware, async (req, res): Promise<void> => {
+  const { employeeId, attendanceDate, shiftId, status } = req.body;
+  if (!employeeId || !attendanceDate || !status) { res.status(400).json({ error: "employeeId, attendanceDate, status required" }); return; }
+  const existing = await db.select().from(attendanceTable).where(
+    and(eq(attendanceTable.employeeId, employeeId), eq(attendanceTable.attendanceDate, attendanceDate))
+  );
+  if (existing.length > 0) {
+    const [updated] = await db.update(attendanceTable).set({
+      shiftId: shiftId || null, status, markedBy: (req as any).userId
+    }).where(eq(attendanceTable.id, existing[0].id)).returning();
+    res.json(updated);
+    return;
+  }
+  const [record] = await db.insert(attendanceTable).values({
+    employeeId, attendanceDate, shiftId: shiftId || null, status, markedBy: (req as any).userId,
+  }).returning();
+  res.json(record);
+});
+
+router.post("/attendance/bulk", authMiddleware, async (req, res): Promise<void> => {
+  const { date, entries } = req.body;
+  if (!date || !entries || !Array.isArray(entries)) { res.status(400).json({ error: "date and entries array required" }); return; }
+  const results = [];
+  for (const entry of entries) {
+    const { employeeId, shiftId, status } = entry;
+    if (!employeeId || !status) continue;
+    const existing = await db.select().from(attendanceTable).where(
+      and(eq(attendanceTable.employeeId, employeeId), eq(attendanceTable.attendanceDate, date))
+    );
+    if (existing.length > 0) {
+      const [updated] = await db.update(attendanceTable).set({
+        shiftId: shiftId || null, status, markedBy: (req as any).userId
+      }).where(eq(attendanceTable.id, existing[0].id)).returning();
+      results.push(updated);
+    } else {
+      const [record] = await db.insert(attendanceTable).values({
+        employeeId, attendanceDate: date, shiftId: shiftId || null, status, markedBy: (req as any).userId,
+      }).returning();
+      results.push(record);
+    }
+  }
+  res.json(results);
+});
+
+router.get("/leaves", authMiddleware, async (req, res): Promise<void> => {
+  const { employeeId } = req.query;
+  let query = db.select({
+    id: leavesTable.id,
+    employeeId: leavesTable.employeeId,
+    employeeName: employeesTable.name,
+    employeeCode: employeesTable.code,
+    leaveDate: leavesTable.leaveDate,
+    leaveType: leavesTable.leaveType,
+    reason: leavesTable.reason,
+    approvedBy: leavesTable.approvedBy,
+    createdAt: leavesTable.createdAt,
+  }).from(leavesTable)
+    .leftJoin(employeesTable, eq(leavesTable.employeeId, employeesTable.id))
+    .orderBy(leavesTable.leaveDate).$dynamic();
+
+  if (employeeId) {
+    query = query.where(eq(leavesTable.employeeId, Number(employeeId)));
+  }
+  const records = await query;
+  res.json(records);
+});
+
+router.post("/leaves", authMiddleware, async (req, res): Promise<void> => {
+  const { employeeId, leaveDate, leaveType, reason } = req.body;
+  if (!employeeId || !leaveDate || !leaveType) { res.status(400).json({ error: "employeeId, leaveDate, leaveType required" }); return; }
+  const existing = await db.select().from(leavesTable).where(
+    and(eq(leavesTable.employeeId, employeeId), eq(leavesTable.leaveDate, leaveDate))
+  );
+  if (existing.length > 0) {
+    res.status(400).json({ error: "Leave already exists for this date" });
+    return;
+  }
+  const [leave] = await db.insert(leavesTable).values({
+    employeeId, leaveDate, leaveType, reason: reason || null, approvedBy: (req as any).userId,
+  }).returning();
+  res.json(leave);
+});
+
+router.delete("/leaves/:id", authMiddleware, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [leave] = await db.delete(leavesTable).where(eq(leavesTable.id, id)).returning();
+  if (!leave) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ success: true });
+});
+
+router.get("/salary", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const records = await db.select({
+    id: salaryRecordsTable.id,
+    employeeId: salaryRecordsTable.employeeId,
+    employeeName: employeesTable.name,
+    employeeCode: employeesTable.code,
+    month: salaryRecordsTable.month,
+    year: salaryRecordsTable.year,
+    baseSalary: salaryRecordsTable.baseSalary,
+    totalDaysInMonth: salaryRecordsTable.totalDaysInMonth,
+    presentDays: salaryRecordsTable.presentDays,
+    halfDays: salaryRecordsTable.halfDays,
+    paidLeaves: salaryRecordsTable.paidLeaves,
+    unpaidLeaves: salaryRecordsTable.unpaidLeaves,
+    weekOffs: salaryRecordsTable.weekOffs,
+    absentDays: salaryRecordsTable.absentDays,
+    deductions: salaryRecordsTable.deductions,
+    netSalary: salaryRecordsTable.netSalary,
+    generatedAt: salaryRecordsTable.generatedAt,
+  }).from(salaryRecordsTable)
+    .leftJoin(employeesTable, eq(salaryRecordsTable.employeeId, employeesTable.id))
+    .orderBy(salaryRecordsTable.year, salaryRecordsTable.month);
+  res.json(records);
+});
+
+router.post("/salary/generate", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const { month, year } = req.body;
+  if (!month || !year) { res.status(400).json({ error: "month and year required" }); return; }
+
+  const employees = await db.select().from(employeesTable).where(eq(employeesTable.active, true));
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  const results = [];
+  for (const emp of employees) {
+    const existing = await db.select().from(salaryRecordsTable).where(
+      and(eq(salaryRecordsTable.employeeId, emp.id), eq(salaryRecordsTable.month, month), eq(salaryRecordsTable.year, year))
+    );
+    if (existing.length > 0) continue;
+
+    const monthStr = String(month).padStart(2, "0");
+    const datePrefix = `${year}-${monthStr}`;
+    const monthAttendance = await db.select().from(attendanceTable).where(
+      and(eq(attendanceTable.employeeId, emp.id), like(attendanceTable.attendanceDate, `${datePrefix}%`))
+    );
+    const monthLeaves = await db.select().from(leavesTable).where(
+      and(eq(leavesTable.employeeId, emp.id), like(leavesTable.leaveDate, `${datePrefix}%`))
+    );
+
+    let presentDays = 0;
+    let halfDays = 0;
+    let weekOffs = 0;
+    let absentDays = 0;
+
+    for (const a of monthAttendance) {
+      if (a.status === "present") presentDays++;
+      else if (a.status === "half-day") { halfDays++; presentDays += 0.5; }
+      else if (a.status === "week-off") weekOffs++;
+      else if (a.status === "absent") absentDays++;
+    }
+
+    const paidLeaves = monthLeaves.filter(l => l.leaveType === "paid").length;
+    const unpaidLeaves = monthLeaves.filter(l => l.leaveType === "unpaid").length;
+
+    const perDay = emp.salary / daysInMonth;
+    const halfDayDeduction = halfDays * 0.5 * perDay;
+    const deductions = (unpaidLeaves + absentDays) * perDay + halfDayDeduction;
+    const netSalary = Math.max(0, emp.salary - deductions);
+
+    const [record] = await db.insert(salaryRecordsTable).values({
+      employeeId: emp.id, month, year, baseSalary: emp.salary,
+      totalDaysInMonth: daysInMonth, presentDays, halfDays, paidLeaves, unpaidLeaves,
+      weekOffs, absentDays, deductions: Math.round(deductions * 100) / 100,
+      netSalary: Math.round(netSalary * 100) / 100,
+    }).returning();
+    results.push(record);
+  }
+  res.json(results);
+});
+
+router.delete("/salary/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [record] = await db.delete(salaryRecordsTable).where(eq(salaryRecordsTable.id, id)).returning();
+  if (!record) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ success: true });
+});
+
+export default router;
