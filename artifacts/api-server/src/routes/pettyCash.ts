@@ -151,6 +151,49 @@ router.post("/petty-cash", authMiddleware, async (req, res): Promise<void> => {
   res.status(201).json(txn);
 });
 
+router.patch("/petty-cash/:id", authMiddleware, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [existing] = await db.select().from(pettyCashLedgerTable).where(eq(pettyCashLedgerTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  const { transactionDate, amount, method, counterpartyName, category, description } = req.body;
+  const updates: any = {};
+  if (transactionDate !== undefined) updates.transactionDate = transactionDate;
+  if (amount !== undefined) {
+    const a = Number(amount);
+    if (a <= 0) { res.status(400).json({ error: "Amount must be positive" }); return; }
+    if (existing.transactionType === "expense") {
+      const balance = await getCurrentBalance();
+      const headroom = balance + existing.amount;
+      if (headroom < a) { res.status(400).json({ error: `Insufficient petty cash balance. Available: ${headroom.toFixed(2)}` }); return; }
+    }
+    updates.amount = a;
+  }
+  if (method !== undefined) updates.method = method || null;
+  if (counterpartyName !== undefined) updates.counterpartyName = counterpartyName || null;
+  if (category !== undefined) updates.category = category || null;
+  if (description !== undefined) updates.description = description || null;
+
+  if (Object.keys(updates).length === 0) { res.json(existing); return; }
+
+  const [updated] = await db.update(pettyCashLedgerTable).set(updates).where(eq(pettyCashLedgerTable.id, id)).returning();
+
+  if (existing.linkedExpenseId && (updates.amount !== undefined || updates.transactionDate !== undefined || updates.description !== undefined || updates.category !== undefined)) {
+    const expenseUpdates: any = {};
+    if (updates.amount !== undefined) { expenseUpdates.amount = updates.amount; expenseUpdates.totalAmount = updates.amount; }
+    if (updates.transactionDate !== undefined) expenseUpdates.expenseDate = updates.transactionDate;
+    if (updates.description !== undefined || updates.category !== undefined) expenseUpdates.description = updates.description || updates.category || existing.description || existing.category || "Petty Cash Expense";
+    if (Object.keys(expenseUpdates).length > 0) {
+      await db.update(expensesTable).set(expenseUpdates).where(eq(expensesTable.id, existing.linkedExpenseId));
+    }
+  }
+
+  await createAuditLog("petty_cash", id, "update", existing, updated);
+  res.json(updated);
+});
+
 router.delete("/petty-cash/:id", authMiddleware, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }

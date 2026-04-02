@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { db, salesEntriesTable, expensesTable, wasteEntriesTable, ingredientsTable, menuItemsTable, recipeLinesTable, stockSnapshotsTable, dailySalesSettlementsTable, pettyCashLedgerTable } from "@workspace/db";
+import { authMiddleware } from "../lib/auth";
 
 const router: IRouter = Router();
 
@@ -362,6 +363,34 @@ router.get("/dashboard/vendor-spend", async (req, res): Promise<void> => {
   }
 
   res.json(Array.from(byVendor.values()));
+});
+
+router.get("/dashboard/trend", authMiddleware, async (req, res): Promise<void> => {
+  const days = Number(req.query.days) || 7;
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days + 1);
+  
+  const fromStr = startDate.toISOString().split("T")[0];
+  const toStr = endDate.toISOString().split("T")[0];
+  
+  const sales = await db.select().from(salesEntriesTable)
+    .where(and(gte(salesEntriesTable.salesDate, fromStr), lte(salesEntriesTable.salesDate, toStr)));
+  const expenses = await db.select().from(expensesTable)
+    .where(and(gte(expensesTable.expenseDate, fromStr), lte(expensesTable.expenseDate, toStr)));
+  const waste = await db.select().from(wasteEntriesTable)
+    .where(and(gte(wasteEntriesTable.wasteDate, fromStr), lte(wasteEntriesTable.wasteDate, toStr)));
+  
+  const trend: { date: string; sales: number; expenses: number; waste: number; profit: number }[] = [];
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const dateStr = d.toISOString().split("T")[0];
+    const daySales = sales.filter(s => s.salesDate === dateStr).reduce((sum, s) => sum + s.totalAmount, 0);
+    const dayExpenses = expenses.filter(e => e.expenseDate === dateStr).reduce((sum, e) => sum + Number(e.totalAmount), 0);
+    const dayWaste = waste.filter(w => w.wasteDate === dateStr).reduce((sum, w) => sum + Number(w.costValue), 0);
+    trend.push({ date: dateStr, sales: daySales, expenses: dayExpenses, waste: dayWaste, profit: daySales - dayExpenses - dayWaste });
+  }
+  
+  res.json(trend);
 });
 
 export default router;

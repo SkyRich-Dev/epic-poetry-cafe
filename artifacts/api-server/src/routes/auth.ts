@@ -57,4 +57,33 @@ router.get("/auth/me", authMiddleware, async (req, res): Promise<void> => {
   }));
 });
 
+router.post("/auth/change-password", authMiddleware, async (req, res): Promise<void> => {
+  const userId = (req as any).userId;
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: "Current and new password are required" });
+    return;
+  }
+
+  if (newPassword.length < 6) {
+    res.status(400).json({ error: "New password must be at least 6 characters" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  if (!verifyPassword(currentPassword, user.passwordHash)) {
+    res.status(401).json({ error: "Current password is incorrect" });
+    return;
+  }
+
+  await db.update(usersTable).set({ passwordHash: hashPassword(newPassword) }).where(eq(usersTable.id, userId));
+  res.json({ message: "Password changed successfully" });
+});
+
 export default router;

@@ -18,6 +18,7 @@ export default function PettyCash() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const isViewer = user?.role === 'viewer';
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
@@ -25,6 +26,7 @@ export default function PettyCash() {
   const { data: summary } = useGetPettyCashSummary();
   const createMut = useCreatePettyCash();
   const deleteMut = useDeletePettyCash();
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const [obModal, setObModal] = useState(false);
   const [obAmount, setObAmount] = useState('');
@@ -67,32 +69,62 @@ export default function PettyCash() {
   const handleSave = async () => {
     const amt = Number(formData.amount);
     if (!amt || amt <= 0) return;
+    const payload = {
+      transactionDate: formData.transactionDate,
+      transactionType: formData.transactionType as any,
+      amount: amt,
+      method: formData.method || undefined,
+      counterpartyName: formData.counterpartyName || undefined,
+      category: formData.category || undefined,
+      description: formData.description || undefined,
+    };
     try {
-      await createMut.mutateAsync({
-        data: {
-          transactionDate: formData.transactionDate,
-          transactionType: formData.transactionType as any,
-          amount: amt,
-          method: formData.method || undefined,
-          counterpartyName: formData.counterpartyName || undefined,
-          category: formData.category || undefined,
-          description: formData.description || undefined,
-        },
-      });
+      if (editingId) {
+        const base = import.meta.env.BASE_URL || '/';
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${base}api/petty-cash/${editingId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) { const d = await res.json(); alert(d.error || 'Failed to update'); return; }
+      } else {
+        await createMut.mutateAsync({ data: payload });
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/petty-cash'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/petty-cash/summary'] });
       setIsModalOpen(false);
-      setFormData({
-        transactionDate: new Date().toISOString().split('T')[0],
-        transactionType: 'receipt',
-        amount: '',
-        method: 'Cash',
-        counterpartyName: '',
-        category: '',
-        description: '',
-      });
+      setEditingId(null);
+      resetForm();
     } catch (e: any) {
-      alert(e?.data?.error || e?.message || 'Error creating transaction');
+      alert(e?.data?.error || e?.message || 'Error saving transaction');
     }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      transactionDate: new Date().toISOString().split('T')[0],
+      transactionType: 'receipt',
+      amount: '',
+      method: 'Cash',
+      counterpartyName: '',
+      category: '',
+      description: '',
+    });
+  };
+
+  const handleEditTxn = (t: any) => {
+    setEditingId(t.id);
+    setFormData({
+      transactionDate: t.transactionDate,
+      transactionType: t.transactionType,
+      amount: String(t.amount),
+      method: t.method || 'Cash',
+      counterpartyName: t.counterpartyName || '',
+      category: t.category || '',
+      description: t.description || '',
+    });
+    setIsModalOpen(true);
   };
 
   const handleDelete = async (id: number) => {
@@ -106,7 +138,7 @@ export default function PettyCash() {
   return (
     <div className="space-y-6">
       <PageHeader title="Petty Cash Ledger" description="Track petty cash receipts, expenses, and adjustments">
-        <Button onClick={() => setIsModalOpen(true)}><Plus size={18} /> New Entry</Button>
+        {!isViewer && <Button onClick={() => { setEditingId(null); resetForm(); setIsModalOpen(true); }}><Plus size={18} /> New Entry</Button>}
       </PageHeader>
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -167,9 +199,14 @@ export default function PettyCash() {
                 <td className="px-6 py-4 text-muted-foreground max-w-[200px] truncate">{t.description || '-'}</td>
                 <td className="px-6 py-4 text-right font-medium">{formatCurrency(t.runningBalance)}</td>
                 <td className="px-6 py-4 text-right">
-                  {!t.linkedExpenseId && (
-                    <button onClick={() => handleDelete(t.id)} className="text-muted-foreground hover:text-red-500"><Trash2 size={16} /></button>
-                  )}
+                  <div className="flex items-center justify-end gap-2">
+                    {!isViewer && (
+                      <button onClick={() => handleEditTxn(t)} className="text-muted-foreground hover:text-primary"><Pencil size={16} /></button>
+                    )}
+                    {isAdmin && (
+                      <button onClick={() => handleDelete(t.id)} className="text-muted-foreground hover:text-red-500"><Trash2 size={16} /></button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -188,8 +225,8 @@ export default function PettyCash() {
         </div>
       </Modal>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="New Petty Cash Entry"
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>Save</Button></>}>
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); resetForm(); }} title={editingId ? "Edit Petty Cash Entry" : "New Petty Cash Entry"}
+        footer={<><Button variant="ghost" onClick={() => { setIsModalOpen(false); setEditingId(null); resetForm(); }}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editingId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-4 py-2">
           {summary && (
             <div className="bg-muted/50 rounded-xl p-3 text-center">
@@ -205,7 +242,7 @@ export default function PettyCash() {
             </div>
             <div>
               <Label>Type</Label>
-              <select className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" value={formData.transactionType} onChange={(e) => setFormData({ ...formData, transactionType: e.target.value })}>
+              <select className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" value={formData.transactionType} onChange={(e) => setFormData({ ...formData, transactionType: e.target.value })} disabled={!!editingId}>
                 <option value="receipt">Receipt (In)</option>
                 <option value="expense">Expense (Out)</option>
                 <option value="adjustment">Adjustment</option>

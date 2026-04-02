@@ -9,6 +9,7 @@ export default function Purchases() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const isViewer = user?.role === 'viewer';
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
@@ -75,7 +76,7 @@ export default function Purchases() {
   return (
     <div className="space-y-6">
       <PageHeader title="Purchases" description="Record inward inventory and vendor bills">
-        <Button onClick={openCreate}><Plus size={18}/> New Purchase</Button>
+        {!isViewer && <Button onClick={openCreate}><Plus size={18}/> New Purchase</Button>}
       </PageHeader>
 
       <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />

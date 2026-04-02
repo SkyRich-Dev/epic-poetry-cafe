@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useListMenuItems, useCreateMenuItem, useUpdateMenuItem, useGetRecipe, useSaveRecipe, useGetMenuItemCosting, useListIngredients, useListCategories } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, cn, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
-import { Plus, Edit, ChefHat, Tag, DollarSign, Calculator, Trash2 } from 'lucide-react';
+import { Plus, Edit, ChefHat, Tag, DollarSign, Calculator, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 
@@ -9,48 +9,64 @@ export default function MenuItems() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const isViewer = user?.role === 'viewer';
   const { data: menuItems, isLoading } = useListMenuItems();
   const { data: categories } = useListCategories({ type: 'menu' });
   const createMut = useCreateMenuItem();
-  
+  const updateMut = useUpdateMenuItem();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
   const [recipeModalOpen, setRecipeModalOpen] = useState(false);
   const [activeItem, setActiveItem] = useState<any>(null);
-  
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
+
   const [formData, setFormData] = useState({ name: '', categoryId: 0, sellingPrice: 0, active: true });
 
   const openCreate = () => {
-    setActiveItem(null);
+    setEditId(null);
     setFormData({ name: '', categoryId: categories?.[0]?.id || 0, sellingPrice: 0, active: true });
+    setIsModalOpen(true);
+  };
+
+  const openEdit = (item: any) => {
+    setEditId(item.id);
+    setFormData({ name: item.name, categoryId: item.categoryId || 0, sellingPrice: Number(item.sellingPrice) || 0, active: item.active ?? true });
     setIsModalOpen(true);
   };
 
   const handleSaveItem = async () => {
     try {
-      await createMut.mutateAsync({ data: formData as any });
+      if (editId) {
+        await updateMut.mutateAsync({ id: editId, data: formData as any });
+      } else {
+        await createMut.mutateAsync({ data: formData as any });
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
       setIsModalOpen(false);
     } catch (e) { console.error(e); }
   };
 
-  const openRecipe = (item: any) => {
-    setActiveItem(item);
-    setRecipeModalOpen(true);
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    try {
+      const base = import.meta.env.BASE_URL || '/';
+      const token = localStorage.getItem('token');
+      await fetch(`${base}api/menu-items/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+      queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
+      setDeleteConfirm(null);
+    } catch(e) { console.error(e); }
   };
 
-  const handleVerify = async (id: number) => {
-    await apiVerify('menu-items', id);
-    queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
-  };
-  const handleUnverify = async (id: number) => {
-    await apiUnverify('menu-items', id);
-    queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
-  };
+  const openRecipe = (item: any) => { setActiveItem(item); setRecipeModalOpen(true); };
+
+  const handleVerify = async (id: number) => { await apiVerify('menu-items', id); queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] }); };
+  const handleUnverify = async (id: number) => { await apiUnverify('menu-items', id); queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] }); };
 
   return (
     <div className="space-y-6">
       <PageHeader title="Menu & Recipes" description="Manage your offerings, prices, and complex recipes">
-        <Button onClick={openCreate}><Plus size={18}/> Add Menu Item</Button>
+        {!isViewer && <Button onClick={openCreate}><Plus size={18}/> Add Menu Item</Button>}
       </PageHeader>
 
       <div className="table-container">
@@ -85,16 +101,20 @@ export default function MenuItems() {
                     </Badge>
                   </td>
                 )}
-                <td className="px-6 py-4 text-center">
-                  <Badge variant={item.active ? "success" : "neutral"}>{item.active ? 'Active' : 'Inactive'}</Badge>
-                </td>
-                <td className="px-6 py-4 text-center">
-                  <VerifyButton verified={!!item.verified} isAdmin={isAdmin} onVerify={() => handleVerify(item.id)} onUnverify={() => handleUnverify(item.id)} />
-                </td>
-                <td className="px-6 py-4 text-right flex justify-end gap-2">
-                  <Button variant="outline" className="px-3 py-1.5 h-auto text-xs" onClick={() => openRecipe(item)}>
-                    <ChefHat size={14} className="mr-1"/> Recipe
-                  </Button>
+                <td className="px-6 py-4 text-center"><Badge variant={item.active ? "success" : "neutral"}>{item.active ? 'Active' : 'Inactive'}</Badge></td>
+                <td className="px-6 py-4 text-center"><VerifyButton verified={!!item.verified} isAdmin={isAdmin} onVerify={() => handleVerify(item.id)} onUnverify={() => handleUnverify(item.id)} /></td>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button variant="outline" className="px-3 py-1.5 h-auto text-xs" onClick={() => openRecipe(item)}>
+                      <ChefHat size={14} className="mr-1"/> Recipe
+                    </Button>
+                    {!isViewer && (
+                      <>
+                        <button onClick={() => openEdit(item)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>
+                        {isAdmin && <button onClick={() => setDeleteConfirm({ id: item.id, name: item.name })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -102,8 +122,8 @@ export default function MenuItems() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Menu Item" 
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSaveItem} disabled={createMut.isPending}>Save</Button></>}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Menu Item" : "Add Menu Item"}
+        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSaveItem} disabled={createMut.isPending || updateMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-4 py-2">
           <div>
             <Label>Item Name</Label>
@@ -118,21 +138,32 @@ export default function MenuItems() {
               </Select>
             </div>
             <div>
-              <Label>Selling Price ($)</Label>
+              <Label>Selling Price</Label>
               <Input type="number" step="0.01" value={formData.sellingPrice || ''} onChange={(e:any) => setFormData({...formData, sellingPrice: Number(e.target.value)})} />
             </div>
           </div>
+          {editId && (
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="active-toggle" checked={formData.active} onChange={e => setFormData({...formData, active: e.target.checked})} />
+              <Label htmlFor="active-toggle" className="mb-0">Active</Label>
+            </div>
+          )}
         </div>
       </Modal>
 
+      <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Menu Item"
+        footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
+        <p className="py-2 text-sm text-muted-foreground">Are you sure you want to delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This will also remove its recipe.</p>
+      </Modal>
+
       {recipeModalOpen && activeItem && (
-        <RecipeBuilderModal item={activeItem} onClose={() => setRecipeModalOpen(false)} />
+        <RecipeBuilderModal item={activeItem} onClose={() => setRecipeModalOpen(false)} isViewer={isViewer} />
       )}
     </div>
   );
 }
 
-function RecipeBuilderModal({ item, onClose }: { item: any, onClose: () => void }) {
+function RecipeBuilderModal({ item, onClose, isViewer }: { item: any, onClose: () => void, isViewer: boolean }) {
   const queryClient = useQueryClient();
   const { data: initialRecipe, isLoading } = useGetRecipe(item.id);
   const { data: costing, refetch: refetchCosting } = useGetMenuItemCosting(item.id);
@@ -140,7 +171,7 @@ function RecipeBuilderModal({ item, onClose }: { item: any, onClose: () => void 
   const saveMut = useSaveRecipe();
 
   const [lines, setLines] = useState<any[]>([]);
-  
+
   React.useEffect(() => {
     if (initialRecipe) {
       setLines(initialRecipe.map((r: any) => ({
@@ -175,8 +206,8 @@ function RecipeBuilderModal({ item, onClose }: { item: any, onClose: () => void 
 
   return (
     <Modal isOpen={true} onClose={onClose} title={`Recipe: ${item.name}`} maxWidth="max-w-4xl"
-      footer={<><Button variant="ghost" onClick={onClose}>Close</Button><Button onClick={handleSave} disabled={saveMut.isPending}>Save Recipe</Button></>}>
-      
+      footer={<><Button variant="ghost" onClick={onClose}>Close</Button>{!isViewer && <Button onClick={handleSave} disabled={saveMut.isPending}>Save Recipe</Button>}</>}>
+
       {isLoading ? <div className="p-8 text-center">Loading recipe...</div> : (
         <div className="space-y-6">
           <div className="bg-primary/5 border border-primary/20 rounded-xl p-5 flex flex-wrap gap-6 items-center justify-between">
@@ -202,36 +233,38 @@ function RecipeBuilderModal({ item, onClose }: { item: any, onClose: () => void 
           <div>
             <div className="flex justify-between items-end mb-3">
               <h3 className="font-semibold text-foreground">Ingredients & Quantities</h3>
-              <Button variant="outline" size="sm" onClick={addLine}><Plus size={14}/> Add Ingredient</Button>
+              {!isViewer && <Button variant="outline" size="sm" onClick={addLine}><Plus size={14}/> Add Ingredient</Button>}
             </div>
-            
+
             <div className="space-y-2">
               {lines.map((line, idx) => (
                 <div key={idx} className="flex items-center gap-3 p-3 bg-muted/30 border border-border/50 rounded-xl group transition-colors hover:border-border">
                   <div className="flex-1">
-                    <Select value={line.ingredientId} onChange={(e:any) => updateLine(idx, 'ingredientId', Number(e.target.value))}>
+                    <Select value={line.ingredientId} onChange={(e:any) => updateLine(idx, 'ingredientId', Number(e.target.value))} disabled={isViewer}>
                       <option value={0}>Select Ingredient...</option>
                       {ingredients?.map(ing => <option key={ing.id} value={ing.id}>{ing.name}</option>)}
                     </Select>
                   </div>
                   <div className="w-24">
-                    <Input type="number" step="0.01" value={line.quantity} onChange={(e:any) => updateLine(idx, 'quantity', Number(e.target.value))} placeholder="Qty" />
+                    <Input type="number" step="0.01" value={line.quantity} onChange={(e:any) => updateLine(idx, 'quantity', Number(e.target.value))} placeholder="Qty" readOnly={isViewer} />
                   </div>
                   <div className="w-20">
                     <Input value={line.uom} readOnly className="bg-muted text-muted-foreground cursor-not-allowed" />
                   </div>
                   <div className="w-24 relative">
-                    <Input type="number" value={line.wastagePercent} onChange={(e:any) => updateLine(idx, 'wastagePercent', Number(e.target.value))} placeholder="Waste %" />
+                    <Input type="number" value={line.wastagePercent} onChange={(e:any) => updateLine(idx, 'wastagePercent', Number(e.target.value))} placeholder="Waste %" readOnly={isViewer} />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
                   </div>
-                  <button onClick={() => removeLine(idx)} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
-                    <Trash2 size={18} />
-                  </button>
+                  {!isViewer && (
+                    <button onClick={() => removeLine(idx)} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
+                      <Trash2 size={18} />
+                    </button>
+                  )}
                 </div>
               ))}
               {lines.length === 0 && (
                 <div className="p-8 text-center border-2 border-dashed border-border rounded-xl text-muted-foreground">
-                  No ingredients added yet. Click "Add Ingredient" to start building this recipe.
+                  No ingredients added yet. {!isViewer && 'Click "Add Ingredient" to start building this recipe.'}
                 </div>
               )}
             </div>

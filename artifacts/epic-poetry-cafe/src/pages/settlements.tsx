@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { useListSettlements, useCreateSettlement, useGetSettlementSalesSummary, useVerifySettlement, useDeleteSettlement, useGetSettlement } from '@workspace/api-client-react';
+import { useListSettlements, useCreateSettlement, useGetSettlementSalesSummary, useVerifySettlement, useDeleteSettlement, useGetSettlement, useUpdateSettlement } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter } from '../components/ui-extras';
-import { Plus, CheckCircle, AlertTriangle, XCircle, Banknote, CreditCard, QrCode, Trash2, Eye, ShieldCheck } from 'lucide-react';
+import { Plus, CheckCircle, AlertTriangle, XCircle, Banknote, CreditCard, QrCode, Trash2, Eye, ShieldCheck, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 
@@ -18,15 +18,18 @@ function StatusBadge({ type, status }: { type: string; status: string }) {
 export default function Settlements() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const isViewer = user?.role === 'viewer';
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
   const filterParams = { ...(filterFrom ? { fromDate: filterFrom } : {}), ...(filterTo ? { toDate: filterTo } : {}) };
   const { data: settlements, isLoading } = useListSettlements(Object.keys(filterParams).length ? filterParams : undefined);
   const createMut = useCreateSettlement();
+  const updateMut = useUpdateSettlement();
   const verifyMut = useVerifySettlement();
   const deleteMut = useDeleteSettlement();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [detailModal, setDetailModal] = useState<number | null>(null);
   const [settlementDate, setSettlementDate] = useState(new Date().toISOString().split('T')[0]);
   const [remarks, setRemarks] = useState('');
@@ -54,22 +57,42 @@ export default function Settlements() {
   const handleSave = async () => {
     const validLines = lines.filter(l => l.paymentMode && Number(l.amount) > 0);
     if (validLines.length === 0) return;
+    const payload = {
+      settlementDate,
+      remarks: remarks || undefined,
+      lines: validLines.map(l => ({
+        paymentMode: l.paymentMode,
+        amount: Number(l.amount),
+        referenceNote: l.referenceNote || undefined,
+      })),
+    } as any;
     try {
-      await createMut.mutateAsync({
-        data: {
-          settlementDate,
-          remarks: remarks || undefined,
-          lines: validLines.map(l => ({
-            paymentMode: l.paymentMode,
-            amount: Number(l.amount),
-            referenceNote: l.referenceNote || undefined,
-          })),
-        } as any,
-      });
+      if (editingId) {
+        await updateMut.mutateAsync({ id: editingId, data: payload });
+      } else {
+        await createMut.mutateAsync({ data: payload });
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/settlements'] });
       setIsModalOpen(false);
+      setEditingId(null);
       resetForm();
     } catch (e: any) { console.error(e); }
+  };
+
+  const handleEdit = (s: any) => {
+    setEditingId(s.id);
+    setSettlementDate(s.settlementDate);
+    setRemarks(s.remarks || '');
+    const base = import.meta.env.BASE_URL || '/';
+    const token = localStorage.getItem('token');
+    fetch(`${base}api/settlements/${s.id}`, { headers: { 'Authorization': `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(detail => {
+        if (detail.lines?.length) {
+          setLines(detail.lines.map((l: any) => ({ paymentMode: l.paymentMode, amount: String(l.amount), referenceNote: l.referenceNote || '' })));
+        }
+        setIsModalOpen(true);
+      });
   };
 
   const handleVerify = async (id: number) => {
@@ -103,7 +126,7 @@ export default function Settlements() {
   return (
     <div className="space-y-6">
       <PageHeader title="Daily Sales Settlement" description="Reconcile daily sales with payment collections">
-        <Button onClick={() => { resetForm(); setIsModalOpen(true); }}><Plus size={18} /> New Settlement</Button>
+        {!isViewer && <Button onClick={() => { resetForm(); setIsModalOpen(true); }}><Plus size={18} /> New Settlement</Button>}
       </PageHeader>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -145,10 +168,13 @@ export default function Settlements() {
                 <td className="px-6 py-4 text-right">
                   <div className="flex items-center justify-end gap-2">
                     <button onClick={() => setDetailModal(s.id)} className="text-muted-foreground hover:text-primary"><Eye size={16} /></button>
+                    {!isViewer && s.status !== 'verified' && (
+                      <button onClick={() => handleEdit(s)} className="text-muted-foreground hover:text-primary"><Pencil size={16} /></button>
+                    )}
                     {user?.role === 'admin' && s.status !== 'verified' && (
                       <button onClick={() => handleVerify(s.id)} className="text-muted-foreground hover:text-emerald-600"><ShieldCheck size={16} /></button>
                     )}
-                    {s.status !== 'verified' && (
+                    {user?.role === 'admin' && s.status !== 'verified' && (
                       <button onClick={() => handleDelete(s.id)} className="text-muted-foreground hover:text-red-500"><Trash2 size={16} /></button>
                     )}
                   </div>
@@ -159,8 +185,8 @@ export default function Settlements() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="New Daily Settlement"
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending || difference > 0.01}>Save Settlement</Button></>}>
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); }} title={editingId ? "Edit Settlement" : "New Daily Settlement"}
+        footer={<><Button variant="ghost" onClick={() => { setIsModalOpen(false); setEditingId(null); }}>Cancel</Button><Button onClick={handleSave} disabled={(createMut.isPending || updateMut.isPending) || difference > 0.01}>{editingId ? 'Update' : 'Save'} Settlement</Button></>}>
         <div className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
             <div>

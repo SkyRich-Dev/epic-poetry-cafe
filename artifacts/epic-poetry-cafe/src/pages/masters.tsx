@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useListCategories, useCreateCategory, useListUom, useGetConfig, useUpdateConfig, useListUsers, useCreateUser, useUpdateUser, useListAuditLogs } from '@workspace/api-client-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useListCategories, useCreateCategory, useListUom, useGetConfig, useUpdateConfig, useListUsers, useCreateUser, useUpdateUser } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, Badge } from '../components/ui-extras';
 import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -496,36 +496,99 @@ function UsersTab() {
 }
 
 function AuditLogsTab() {
-  const { data: logs, isLoading } = useListAuditLogs();
+  const [moduleFilter, setModuleFilter] = useState('');
+  const [actionFilter, setActionFilter] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [logs, setLogs] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadLogs = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const base = import.meta.env.BASE_URL || '/';
+      const token = localStorage.getItem('token');
+      const params = new URLSearchParams();
+      params.set('limit', '100');
+      if (moduleFilter) params.set('module', moduleFilter);
+      if (actionFilter) params.set('action', actionFilter);
+      if (fromDate) params.set('fromDate', fromDate);
+      if (toDate) params.set('toDate', toDate);
+      const res = await fetch(`${base}api/audit-logs?${params.toString()}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) setLogs(await res.json());
+    } catch { }
+    setLoading(false);
+  }, [moduleFilter, actionFilter, fromDate, toDate]);
+
+  React.useEffect(() => { loadLogs(); }, [loadLogs]);
+
+  const MODULES = ['vendors', 'ingredients', 'menu-items', 'purchases', 'expenses', 'sales', 'waste', 'settlements', 'petty-cash', 'attendance', 'users', 'categories'];
+  const ACTIONS = ['CREATE', 'UPDATE', 'DELETE', 'VERIFY', 'UNVERIFY'];
 
   return (
-    <div className="table-container">
-      <table className="w-full text-sm text-left">
-        <thead className="bg-muted text-muted-foreground border-b font-medium uppercase text-xs tracking-wider">
-          <tr>
-            <th className="px-6 py-4">Timestamp</th>
-            <th className="px-6 py-4">Module</th>
-            <th className="px-6 py-4">Action</th>
-            <th className="px-6 py-4">Record ID</th>
-            <th className="px-6 py-4">Changed By</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {isLoading ? (
-            <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">Loading logs...</td></tr>
-          ) : logs?.items?.length === 0 || !logs ? (
-             <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No audit logs available.</td></tr>
-          ) : logs.items.map((log: any) => (
-            <tr key={log.id} className="table-row-hover">
-              <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{new Date(log.changedAt).toLocaleString()}</td>
-              <td className="px-6 py-4 font-medium capitalize">{log.module}</td>
-              <td className="px-6 py-4"><span className="bg-secondary text-secondary-foreground px-2 py-1 rounded text-xs font-semibold">{log.action}</span></td>
-              <td className="px-6 py-4 text-muted-foreground">#{log.recordId}</td>
-              <td className="px-6 py-4 text-foreground">{log.changedBy || 'System'}</td>
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3 items-end">
+        <div>
+          <Label className="text-xs">Module</Label>
+          <Select value={moduleFilter} onChange={(e: any) => setModuleFilter(e.target.value)}>
+            <option value="">All Modules</option>
+            {MODULES.map(m => <option key={m} value={m}>{m}</option>)}
+          </Select>
+        </div>
+        <div>
+          <Label className="text-xs">Action</Label>
+          <Select value={actionFilter} onChange={(e: any) => setActionFilter(e.target.value)}>
+            <option value="">All Actions</option>
+            {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
+          </Select>
+        </div>
+        <div>
+          <Label className="text-xs">From</Label>
+          <Input type="date" value={fromDate} onChange={(e: any) => setFromDate(e.target.value)} className="w-40" />
+        </div>
+        <div>
+          <Label className="text-xs">To</Label>
+          <Input type="date" value={toDate} onChange={(e: any) => setToDate(e.target.value)} className="w-40" />
+        </div>
+        {(moduleFilter || actionFilter || fromDate || toDate) && (
+          <Button variant="ghost" onClick={() => { setModuleFilter(''); setActionFilter(''); setFromDate(''); setToDate(''); }} className="text-xs">Clear Filters</Button>
+        )}
+      </div>
+
+      {logs && <p className="text-xs text-muted-foreground">{logs.total} log(s) found</p>}
+
+      <div className="table-container">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-muted text-muted-foreground border-b font-medium uppercase text-xs tracking-wider">
+            <tr>
+              <th className="px-6 py-4">Timestamp</th>
+              <th className="px-6 py-4">Module</th>
+              <th className="px-6 py-4">Action</th>
+              <th className="px-6 py-4">Record ID</th>
+              <th className="px-6 py-4">Changed By</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {loading ? (
+              <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">Loading logs...</td></tr>
+            ) : logs?.items?.length === 0 || !logs ? (
+               <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No audit logs match your filters.</td></tr>
+            ) : logs.items.map((log: any) => (
+              <tr key={log.id} className="table-row-hover">
+                <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{new Date(log.changedAt).toLocaleString()}</td>
+                <td className="px-6 py-4 font-medium capitalize">{log.module}</td>
+                <td className="px-6 py-4">
+                  <span className={`px-2 py-1 rounded text-xs font-semibold ${log.action === 'DELETE' ? 'bg-red-100 text-red-700' : log.action === 'CREATE' ? 'bg-emerald-100 text-emerald-700' : 'bg-secondary text-secondary-foreground'}`}>
+                    {log.action}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-muted-foreground">#{log.recordId}</td>
+                <td className="px-6 py-4 text-foreground">{log.changedBy || 'System'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

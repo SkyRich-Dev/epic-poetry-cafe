@@ -62,20 +62,20 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Purchases**: GET/POST /purchases, GET /purchases/:id
 - **Expenses**: GET/POST /expenses, GET/PATCH/DELETE /expenses/:id (Petty Cash payment mode auto-creates linked petty cash ledger entry)
 - **Settlements**: GET/POST /settlements, GET/PATCH/DELETE /settlements/:id, POST /settlements/:id/verify, GET /settlements/sales-summary?date=
-- **Petty Cash**: GET/POST /petty-cash, DELETE /petty-cash/:id, GET /petty-cash/summary
+- **Petty Cash**: GET/POST/PATCH /petty-cash, DELETE /petty-cash/:id, GET /petty-cash/summary
 - **Inventory**: GET /inventory/stock-overview, GET/POST /inventory/stock-snapshots, POST /inventory/adjustments
 - **Sales**: GET/POST /sales, PATCH/DELETE /sales/:id, GET /sales/daily-summary
 - **Waste**: GET/POST /waste, PATCH/DELETE /waste/:id, GET /waste/summary
 - **Trials**: GET/POST /trials, GET/PATCH/DELETE /trials/:id, POST /trials/:id/versions, POST /trials/:trialId/versions/:versionId/convert
 - **Upload**: POST /upload/sales, /upload/purchases, /upload/expenses, /upload/menu (multipart file), GET /upload/template/:type (xlsx template download, type=sales|purchases|expenses|menu)
 - **Reports (Analytics)**: GET /reports/item-profitability, /reports/item-wastage (params: period=daily|weekly|monthly|custom, fromDate, toDate)
-- **Dashboard**: GET /dashboard/summary, /profitability, /daily-pl, /consumption-variance, /sales-trend, /expense-breakdown, /vendor-spend
+- **Dashboard**: GET /dashboard/summary, /profitability, /daily-pl, /consumption-variance, /sales-trend, /expense-breakdown, /vendor-spend, /trend (authenticated)
 - **Reports**: GET /reports/export?reportType=...
 - **Audit Logs**: GET /audit-logs
 
 ## Auth
 
-- Custom JWT auth: POST /auth/login, GET /auth/me
+- Custom JWT auth: POST /auth/login, GET /auth/me, POST /auth/change-password
 - Roles: `admin` (full access), `manager` (daily operations only), `viewer` (read-only)
 - Admin-only routes: config PATCH, users CRUD, audit-logs, upload, reports, trials
 - **User Management page**: Admin can create users, assign roles (Admin/Manager/Viewer), edit profiles, change passwords, activate/deactivate accounts
@@ -108,7 +108,9 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Excel Upload**: Bulk import sales, purchases, expenses from .xlsx/.xls files with row-by-row validation, auto name-matching (vendors, ingredients, menu items), and detailed import results
 - **Auth Token**: Frontend uses setAuthTokenGetter from custom-fetch for global API auth header injection
 - **PATCH operations**: All update schemas use .partial() for optional field updates
-- **Role-based Dashboard**: Admin sees "Owner's Dashboard" with full P&L, settlements, insights, top items. Manager/viewer sees "Operations Dashboard" with only: sales (with comparison badges), expenses, waste, petty cash balance, petty cash spent
+- **Role-based Dashboard**: Admin sees "Owner's Dashboard" with full P&L, settlements, insights, top items, and recharts-powered trend charts (Sales vs Expenses bar chart + Profit Trend line chart with 7D/14D/30D period selector). Manager/viewer sees "Operations Dashboard" with only: sales (with comparison badges), expenses, waste, petty cash balance, petty cash spent
+- **Password Change**: All users can change password from sidebar (key icon). Modal validates current password, min 6 chars, confirmation match
+- **Attendance Monthly Summary**: Monthly summary tab showing per-employee present/half-day/absent/week-off counts and attendance percentage
 - **Dashboard Date Filters**: Filter bar with Today/Date/Date Range/This Week/This Month modes. Week and month modes have prev/next navigation arrows. Labels dynamically adjust (e.g., "Today's Sales" → "Weekly Sales" → "Monthly Sales"). Backend accepts fromDate/toDate query params, falling back to single date for backward compat. Range mode compares vs previous equivalent period
 - **Menu Cost Visibility**: Production cost and margin columns on Menu Items page are hidden from non-admin users
 - **Route-level Access Control**: Admin-only pages (Trials, Analytics, Reports, Masters, Upload) show "Access Restricted" page for non-admin users, even if accessed via direct URL

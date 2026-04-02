@@ -27,7 +27,8 @@ export default function AttendancePage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const isAdmin = user?.role === 'admin';
-  const [tab, setTab] = useState<'attendance' | 'leaves'>('attendance');
+  const isViewer = user?.role === 'viewer';
+  const [tab, setTab] = useState<'attendance' | 'leaves' | 'monthly'>('attendance');
 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -127,7 +128,7 @@ export default function AttendancePage() {
       <PageHeader title="Attendance & Leave" subtitle="Mark daily attendance and manage employee leaves" />
 
       <div className="flex gap-1 mb-6 bg-muted rounded-lg p-1 w-fit">
-        {[{ key: 'attendance' as const, label: 'Attendance', icon: UserCheck }, { key: 'leaves' as const, label: 'Leave Management', icon: CalendarDays }].map(t => (
+        {[{ key: 'attendance' as const, label: 'Attendance', icon: UserCheck }, { key: 'leaves' as const, label: 'Leave Management', icon: CalendarDays }, { key: 'monthly' as const, label: 'Monthly Summary', icon: CalendarDays }].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${tab === t.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <t.icon size={16} /> {t.label}
@@ -142,7 +143,7 @@ export default function AttendancePage() {
               <Label>Date</Label>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-44" />
             </div>
-            <Button onClick={saveAttendance}><Check size={16} className="mr-2" /> Save Attendance</Button>
+            {!isViewer && <Button onClick={saveAttendance}><Check size={16} className="mr-2" /> Save Attendance</Button>}
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
@@ -201,7 +202,7 @@ export default function AttendancePage() {
       {tab === 'leaves' && (
         <div>
           <div className="flex justify-end mb-4">
-            <Button onClick={() => setLeaveModal(true)}><Plus size={16} className="mr-2" /> Record Leave</Button>
+            {!isViewer && <Button onClick={() => setLeaveModal(true)}><Plus size={16} className="mr-2" /> Record Leave</Button>}
           </div>
 
           <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
@@ -227,7 +228,7 @@ export default function AttendancePage() {
                     </td>
                     <td className="px-6 py-4 text-muted-foreground">{l.reason || '-'}</td>
                     <td className="px-6 py-4 text-center">
-                      <button onClick={() => deleteLeave(l.id)} className="p-1.5 rounded-lg hover:bg-red-50 transition-colors text-muted-foreground hover:text-red-600"><Trash2 size={15} /></button>
+                      {isAdmin && <button onClick={() => deleteLeave(l.id)} className="p-1.5 rounded-lg hover:bg-red-50 transition-colors text-muted-foreground hover:text-red-600"><Trash2 size={15} /></button>}
                     </td>
                   </tr>
                 ))}
@@ -235,7 +236,7 @@ export default function AttendancePage() {
             </table>
           </div>
 
-          <Modal isOpen={leaveModal} onClose={() => setLeaveModal(false)} title="Record Leave">
+          <Modal isOpen={leaveModal} onClose={() => setLeaveModal(false)} title="Record Leave" footer={<><Button variant="ghost" onClick={() => setLeaveModal(false)}>Cancel</Button><Button onClick={saveLeave}>Save Leave</Button></>}>
             <div className="space-y-4">
               <div><Label>Employee *</Label>
                 <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" value={leaveForm.employeeId} onChange={e => setLeaveForm({ ...leaveForm, employeeId: e.target.value })}>
@@ -251,14 +252,127 @@ export default function AttendancePage() {
                 </select>
               </div>
               <div><Label>Reason</Label><Input value={leaveForm.reason} onChange={e => setLeaveForm({ ...leaveForm, reason: e.target.value })} placeholder="Optional reason" /></div>
-              <div className="flex gap-3 pt-2">
-                <Button onClick={saveLeave} className="flex-1">Save Leave</Button>
-                <Button variant="outline" onClick={() => setLeaveModal(false)} className="flex-1">Cancel</Button>
-              </div>
             </div>
           </Modal>
         </div>
       )}
+
+      {tab === 'monthly' && <MonthlySummaryTab employees={employees} />}
+    </div>
+  );
+}
+
+function MonthlySummaryTab({ employees }: { employees: Employee[] }) {
+  const [month, setMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [monthData, setMonthData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadMonthData = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const [year, mon] = month.split('-').map(Number);
+      const daysInMonth = new Date(year, mon, 0).getDate();
+      const allDays: string[] = [];
+      for (let d = 1; d <= daysInMonth; d++) {
+        allDays.push(`${year}-${String(mon).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+      }
+
+      const results = await Promise.all(
+        allDays.map(date => apiFetch(`attendance?date=${date}`).catch(() => []))
+      );
+
+      const empMap: Record<number, { present: number; halfDay: number; absent: number; weekOff: number; total: number }> = {};
+      employees.forEach(emp => {
+        empMap[emp.id] = { present: 0, halfDay: 0, absent: 0, weekOff: 0, total: daysInMonth };
+      });
+
+      results.forEach((dayRecords: AttendanceRecord[]) => {
+        dayRecords.forEach((rec: AttendanceRecord) => {
+          if (!empMap[rec.employeeId]) return;
+          if (rec.status === 'present') empMap[rec.employeeId].present++;
+          else if (rec.status === 'half-day') empMap[rec.employeeId].halfDay++;
+          else if (rec.status === 'absent') empMap[rec.employeeId].absent++;
+          else if (rec.status === 'week-off') empMap[rec.employeeId].weekOff++;
+        });
+      });
+
+      const data = employees.map(emp => ({
+        ...emp,
+        ...empMap[emp.id],
+      }));
+      setMonthData(data);
+    } catch { }
+    setLoading(false);
+  }, [month, employees]);
+
+  React.useEffect(() => { loadMonthData(); }, [loadMonthData]);
+
+  const prevMonth = () => {
+    const [y, m] = month.split('-').map(Number);
+    const d = new Date(y, m - 2, 1);
+    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+  const nextMonth = () => {
+    const [y, m] = month.split('-').map(Number);
+    const d = new Date(y, m, 1);
+    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+
+  const monthLabel = (() => {
+    const [y, m] = month.split('-').map(Number);
+    return new Date(y, m - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  })();
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <button onClick={prevMonth} className="px-3 py-1.5 rounded-lg border text-sm hover:bg-muted">&larr;</button>
+        <span className="text-lg font-semibold">{monthLabel}</span>
+        <button onClick={nextMonth} className="px-3 py-1.5 rounded-lg border text-sm hover:bg-muted">&rarr;</button>
+      </div>
+
+      <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+        <table className="w-full">
+          <thead><tr className="border-b bg-muted/50">
+            <th className="px-6 py-3.5 text-left text-xs font-semibold text-muted-foreground uppercase">Employee</th>
+            <th className="px-4 py-3.5 text-center text-xs font-semibold text-emerald-600 uppercase">Present</th>
+            <th className="px-4 py-3.5 text-center text-xs font-semibold text-amber-600 uppercase">Half Day</th>
+            <th className="px-4 py-3.5 text-center text-xs font-semibold text-red-600 uppercase">Absent</th>
+            <th className="px-4 py-3.5 text-center text-xs font-semibold text-blue-600 uppercase">Week Off</th>
+            <th className="px-4 py-3.5 text-center text-xs font-semibold text-muted-foreground uppercase">Attendance %</th>
+          </tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">Loading monthly data...</td></tr>
+            ) : monthData.length === 0 ? (
+              <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">No employees found.</td></tr>
+            ) : monthData.map(emp => {
+              const workDays = emp.total - emp.weekOff;
+              const pct = workDays > 0 ? ((emp.present + emp.halfDay * 0.5) / workDays * 100) : 0;
+              return (
+                <tr key={emp.id} className="border-b hover:bg-muted/30 transition-colors">
+                  <td className="px-6 py-3">
+                    <div className="font-medium">{emp.name}</div>
+                    <div className="text-xs text-muted-foreground">{emp.position}</div>
+                  </td>
+                  <td className="px-4 py-3 text-center font-bold text-emerald-700">{emp.present}</td>
+                  <td className="px-4 py-3 text-center font-bold text-amber-700">{emp.halfDay}</td>
+                  <td className="px-4 py-3 text-center font-bold text-red-700">{emp.absent}</td>
+                  <td className="px-4 py-3 text-center font-bold text-blue-700">{emp.weekOff}</td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${pct >= 90 ? 'bg-emerald-100 text-emerald-700' : pct >= 75 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                      {pct.toFixed(0)}%
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { customFetch } from '@workspace/api-client-react/custom-fetch';
 import { PageHeader, StatCard, formatCurrency, Badge, cn } from '../components/ui-extras';
 import { DollarSign, TrendingUp, TrendingDown, PackageMinus, AlertCircle, TrendingUpDown, Banknote, Wallet, ArrowUpRight, ArrowDownRight, Minus, CalendarDays, Calendar } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Legend, PieChart, Pie, Cell } from 'recharts';
 
 const BASE = import.meta.env.BASE_URL || '/';
 
@@ -185,6 +186,77 @@ function ManagerDashboard({ summary, mode }: { summary: any; mode: FilterMode })
   );
 }
 
+const CHART_COLORS = ['#10b981', '#f43f5e', '#f59e0b', '#6366f1', '#3b82f6', '#8b5cf6', '#ec4899'];
+
+function TrendCharts() {
+  const [trend, setTrend] = useState<any[]>([]);
+  const [days, setDays] = useState(7);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    customFetch(`${BASE}api/dashboard/trend?days=${days}`).then((data: any) => {
+      setTrend(data.map((d: any) => ({
+        ...d,
+        label: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      })));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [days]);
+
+  if (loading) return <div className="py-8 text-center text-muted-foreground">Loading charts...</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-display font-semibold text-foreground">Revenue & Expense Trend</h3>
+        <div className="flex gap-1 bg-muted rounded-lg p-1">
+          {[{ val: 7, label: '7D' }, { val: 14, label: '14D' }, { val: 30, label: '30D' }].map(opt => (
+            <button key={opt.val} onClick={() => setDays(opt.val)}
+              className={cn("px-3 py-1 rounded-md text-xs font-medium transition-all",
+                days === opt.val ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <h4 className="text-sm font-semibold text-muted-foreground mb-4 uppercase tracking-wider">Sales vs Expenses</h4>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={trend}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+              <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
+              <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--card)' }} />
+              <Legend />
+              <Bar dataKey="sales" name="Sales" fill="#10b981" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="expenses" name="Expenses" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="waste" name="Waste" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <h4 className="text-sm font-semibold text-muted-foreground mb-4 uppercase tracking-wider">Profit Trend</h4>
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={trend}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+              <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
+              <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--card)' }} />
+              <Legend />
+              <Line type="monotone" dataKey="profit" name="Est. Profit" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 4 }} />
+              <Line type="monotone" dataKey="sales" name="Sales" stroke="#10b981" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminDashboard({ summary, mode }: { summary: any; mode: FilterMode }) {
   const isSingleDay = summary.isSingleDay;
   const labels = getRangeLabel(mode, isSingleDay);
@@ -209,6 +281,8 @@ function AdminDashboard({ summary, mode }: { summary: any; mode: FilterMode }) {
         <StatCard title="Petty Cash Balance" value={formatCurrency(summary.pettyCashBalance || 0)} icon={Wallet} colorClass="text-violet-600 bg-violet-100" />
         <StatCard title={labels.pcSpent} value={formatCurrency(summary.pettyCashSpentToday || 0)} icon={Wallet} colorClass="text-rose-500 bg-rose-100" />
       </div>
+
+      <TrendCharts />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
