@@ -4,6 +4,23 @@ import { db, employeesTable, shiftsTable, attendanceTable, leavesTable, salaryRe
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { generateCode } from "../lib/codeGenerator";
 import { createAuditLog } from "../lib/audit";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+
+const PROOF_DIR = path.join(process.cwd(), "uploads", "salary-proofs");
+fs.mkdirSync(PROOF_DIR, { recursive: true });
+const proofUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, PROOF_DIR),
+    filename: (_req, file, cb) => cb(null, `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`),
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
 
 const router: IRouter = Router();
 
@@ -230,6 +247,10 @@ router.get("/salary", authMiddleware, adminOnly, async (req, res): Promise<void>
     absentDays: salaryRecordsTable.absentDays,
     deductions: salaryRecordsTable.deductions,
     netSalary: salaryRecordsTable.netSalary,
+    paymentStatus: salaryRecordsTable.paymentStatus,
+    paymentProofUrl: salaryRecordsTable.paymentProofUrl,
+    paidAt: salaryRecordsTable.paidAt,
+    paidBy: salaryRecordsTable.paidBy,
     generatedAt: salaryRecordsTable.generatedAt,
   }).from(salaryRecordsTable)
     .leftJoin(employeesTable, eq(salaryRecordsTable.employeeId, employeesTable.id))
@@ -289,6 +310,49 @@ router.post("/salary/generate", authMiddleware, adminOnly, async (req, res): Pro
     results.push(record);
   }
   res.json(results);
+});
+
+router.patch("/salary/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [existing] = await db.select().from(salaryRecordsTable).where(eq(salaryRecordsTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  const { paymentStatus, paymentProofUrl } = req.body;
+  const updates: any = {};
+  if (paymentStatus !== undefined) {
+    if (!["pending", "paid"].includes(paymentStatus)) { res.status(400).json({ error: "paymentStatus must be 'pending' or 'paid'" }); return; }
+    updates.paymentStatus = paymentStatus;
+    if (paymentStatus === "paid") {
+      updates.paidAt = new Date();
+      updates.paidBy = (req as any).userId;
+    } else {
+      updates.paidAt = null;
+      updates.paidBy = null;
+      updates.paymentProofUrl = null;
+    }
+  }
+  if (paymentProofUrl !== undefined) updates.paymentProofUrl = paymentProofUrl || null;
+
+  const [updated] = await db.update(salaryRecordsTable).set(updates).where(eq(salaryRecordsTable.id, id)).returning();
+  res.json(updated);
+});
+
+router.get("/uploads/salary-proofs/:filename", authMiddleware, async (req, res): Promise<void> => {
+  const filePath = path.join(PROOF_DIR, req.params.filename);
+  if (!fs.existsSync(filePath)) { res.status(404).json({ error: "File not found" }); return; }
+  res.sendFile(filePath);
+});
+
+router.post("/salary/:id/upload-proof", authMiddleware, adminOnly, proofUpload.single("file"), async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [existing] = await db.select().from(salaryRecordsTable).where(eq(salaryRecordsTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+  const proofUrl = `/api/uploads/salary-proofs/${req.file.filename}`;
+  const [updated] = await db.update(salaryRecordsTable).set({ paymentProofUrl: proofUrl }).where(eq(salaryRecordsTable.id, id)).returning();
+  res.json(updated);
 });
 
 router.delete("/salary/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {

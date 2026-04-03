@@ -19,25 +19,29 @@ export default function Sales() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ salesDate: new Date().toISOString().split('T')[0], menuItemId: 0, quantity: 1, sellingPrice: 0, channel: 'DINE_IN' });
+  const [formData, setFormData] = useState({ salesDate: new Date().toISOString().split('T')[0], menuItemId: 0, quantity: 1, discount: 0, channel: 'DINE_IN' });
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
 
-  const handleItemSelect = (id: number) => {
-    const item = menuItems?.find(m => m.id === id);
-    setFormData({ ...formData, menuItemId: id, sellingPrice: item?.sellingPrice || 0 });
+  const getMenuPrice = (menuItemId: number) => {
+    const item = menuItems?.find(m => m.id === menuItemId);
+    return item?.sellingPrice || 0;
   };
 
-  const openCreate = () => { setEditId(null); setFormData({ salesDate: new Date().toISOString().split('T')[0], menuItemId: 0, quantity: 1, sellingPrice: 0, channel: 'DINE_IN' }); setIsModalOpen(true); };
-  const openEdit = (s: any) => { setEditId(s.id); setFormData({ salesDate: s.salesDate, menuItemId: s.menuItemId, quantity: Number(s.quantity), sellingPrice: Number(s.sellingPrice), channel: s.channel }); setIsModalOpen(true); };
+  const openCreate = () => { setEditId(null); setFormData({ salesDate: new Date().toISOString().split('T')[0], menuItemId: 0, quantity: 1, discount: 0, channel: 'DINE_IN' }); setIsModalOpen(true); };
+  const openEdit = (s: any) => { setEditId(s.id); setFormData({ salesDate: s.salesDate, menuItemId: s.menuItemId, quantity: Number(s.quantity), discount: Number(s.discount || 0), channel: s.channel }); setIsModalOpen(true); };
+
+  const currentMenuPrice = getMenuPrice(formData.menuItemId);
+  const entryTotal = formData.quantity * currentMenuPrice - formData.discount;
 
   const handleSave = async () => {
     try {
       const base = import.meta.env.BASE_URL || '/';
       const token = localStorage.getItem('token');
+      const payload = { salesDate: formData.salesDate, menuItemId: formData.menuItemId, quantity: formData.quantity, sellingPrice: currentMenuPrice, discount: formData.discount, channel: formData.channel };
       if (editId) {
-        await fetch(`${base}api/sales/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
+        await fetch(`${base}api/sales/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
       } else {
-        await createMut.mutateAsync({ data: formData as any });
+        await createMut.mutateAsync({ data: payload as any });
       }
       queryClient.invalidateQueries({ queryKey: ['/api/sales'] });
       setIsModalOpen(false);
@@ -74,7 +78,8 @@ export default function Sales() {
               <th className="px-6 py-4">Item</th>
               <th className="px-6 py-4">Channel</th>
               <th className="px-6 py-4 text-right">Qty</th>
-              <th className="px-6 py-4 text-right">Price</th>
+              <th className="px-6 py-4 text-right">Menu Price</th>
+              <th className="px-6 py-4 text-right">Discount</th>
               <th className="px-6 py-4 text-right">Total</th>
               <th className="px-6 py-4 text-center">Verified</th>
               {!isViewer && <th className="px-6 py-4 text-right">Actions</th>}
@@ -82,9 +87,9 @@ export default function Sales() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">Loading sales...</td></tr>
+              <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">Loading sales...</td></tr>
             ) : sales?.length === 0 ? (
-              <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">No sales recorded.</td></tr>
+              <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">No sales recorded.</td></tr>
             ) : sales?.map((s: any) => (
               <tr key={s.id} className="table-row-hover">
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(s.salesDate)}</td>
@@ -92,6 +97,7 @@ export default function Sales() {
                 <td className="px-6 py-4">{s.channel.replace('_', ' ')}</td>
                 <td className="px-6 py-4 text-right">{Number(s.quantity).toFixed(2)}</td>
                 <td className="px-6 py-4 text-right">{formatCurrency(s.sellingPrice)}</td>
+                <td className="px-6 py-4 text-right text-orange-600">{Number(s.discount) > 0 ? formatCurrency(s.discount) : '-'}</td>
                 <td className="px-6 py-4 text-right font-medium text-emerald-600">{formatCurrency(s.totalAmount)}</td>
                 <td className="px-6 py-4 text-center"><VerifyButton verified={!!s.verified} isAdmin={isAdmin} onVerify={() => handleVerify(s.id)} onUnverify={() => handleUnverify(s.id)} /></td>
                 {!isViewer && (
@@ -115,14 +121,15 @@ export default function Sales() {
             <div><Label>Date</Label><Input type="date" value={formData.salesDate} onChange={(e:any) => setFormData({...formData, salesDate: e.target.value})} /></div>
             <div><Label>Sales Channel</Label><Select value={formData.channel} onChange={(e:any) => setFormData({...formData, channel: e.target.value})}><option value="DINE_IN">Dine In</option><option value="TAKEAWAY">Takeaway</option><option value="DELIVERY">Delivery</option></Select></div>
           </div>
-          <div><Label>Menu Item</Label><Select value={formData.menuItemId} onChange={(e:any) => handleItemSelect(Number(e.target.value))}><option value={0}>Select Item...</option>{menuItems?.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</Select></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div><Label>Menu Item</Label><Select value={formData.menuItemId} onChange={(e:any) => { const id = Number(e.target.value); setFormData({...formData, menuItemId: id}); }}><option value={0}>Select Item...</option>{menuItems?.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</Select></div>
+          <div className="grid grid-cols-3 gap-4">
             <div><Label>Quantity Sold</Label><Input type="number" value={formData.quantity} onChange={(e:any) => setFormData({...formData, quantity: Number(e.target.value)})} /></div>
-            <div><Label>Effective Price</Label><Input type="number" step="0.01" value={formData.sellingPrice} onChange={(e:any) => setFormData({...formData, sellingPrice: Number(e.target.value)})} /></div>
+            <div><Label>Menu Price</Label><Input type="number" value={currentMenuPrice} readOnly disabled className="bg-muted cursor-not-allowed" /></div>
+            <div><Label>Discount</Label><Input type="number" step="0.01" min="0" value={formData.discount} onChange={(e:any) => setFormData({...formData, discount: Number(e.target.value)})} /></div>
           </div>
           <div className="p-4 mt-4 bg-primary/10 rounded-xl border border-primary/20 flex justify-between items-center">
             <span className="font-semibold text-primary">Entry Total:</span>
-            <span className="text-xl font-display font-bold text-primary">{formatCurrency(formData.quantity * formData.sellingPrice)}</span>
+            <span className="text-xl font-display font-bold text-primary">{formatCurrency(entryTotal)}</span>
           </div>
         </div>
       </Modal>

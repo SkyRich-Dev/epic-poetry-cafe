@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
 import { PageHeader, Button, Input, Label, Modal, formatCurrency } from '../components/ui-extras';
-import { Plus, Pencil, Trash2, UserPlus, Clock, Users, CalendarDays, Briefcase, IndianRupee } from 'lucide-react';
+import { Plus, Pencil, Trash2, UserPlus, Clock, Users, CalendarDays, Briefcase, IndianRupee, CheckCircle2, Circle, Upload, ExternalLink } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -22,6 +22,7 @@ type SalaryRecord = {
   month: number; year: number; baseSalary: number; totalDaysInMonth: number;
   presentDays: number; halfDays: number; paidLeaves: number; unpaidLeaves: number;
   weekOffs: number; absentDays: number; deductions: number; netSalary: number;
+  paymentStatus: string; paymentProofUrl?: string | null; paidAt?: string | null; paidBy?: number | null;
 };
 
 const POSITIONS = ['Barista', 'Chef', 'Cashier', 'Waiter', 'Manager', 'Helper', 'Cleaner', 'Delivery Boy', 'Other'];
@@ -133,6 +134,36 @@ export default function EmployeesPage() {
     if (!confirm('Delete this salary record?')) return;
     await apiFetch(`salary/${id}`, { method: 'DELETE' });
     toast({ title: 'Salary record deleted' }); loadSalary();
+  };
+
+  const togglePaymentStatus = async (record: SalaryRecord) => {
+    const newStatus = record.paymentStatus === 'paid' ? 'pending' : 'paid';
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${BASE}api/salary/${record.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ paymentStatus: newStatus }),
+      });
+      toast({ title: newStatus === 'paid' ? 'Marked as paid' : 'Marked as pending' });
+      loadSalary();
+    } catch { toast({ title: 'Error updating status', variant: 'destructive' }); }
+  };
+
+  const uploadProof = async (recordId: number, file: File) => {
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${BASE}api/salary/${recordId}/upload-proof`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      toast({ title: 'Payment proof uploaded' });
+      loadSalary();
+    } catch { toast({ title: 'Error uploading proof', variant: 'destructive' }); }
   };
 
   const filteredSalary = salaryRecords.filter(s => s.month === salaryMonth && s.year === salaryYear);
@@ -332,11 +363,13 @@ export default function EmployeesPage() {
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Absent</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Deductions</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Net Salary</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Proof</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Actions</th>
               </tr></thead>
               <tbody>
                 {filteredSalary.length === 0 ? (
-                  <tr><td colSpan={12} className="px-6 py-12 text-center text-muted-foreground">No salary records for {MONTHS[salaryMonth - 1]} {salaryYear}. Click "Generate Salary" to compute.</td></tr>
+                  <tr><td colSpan={14} className="px-6 py-12 text-center text-muted-foreground">No salary records for {MONTHS[salaryMonth - 1]} {salaryYear}. Click "Generate Salary" to compute.</td></tr>
                 ) : filteredSalary.map(s => (
                   <tr key={s.id} className="border-b hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3"><div className="font-medium">{s.employeeName}</div><div className="text-xs text-muted-foreground">{s.employeeCode}</div></td>
@@ -350,6 +383,43 @@ export default function EmployeesPage() {
                     <td className="px-4 py-3 text-right">{s.absentDays}</td>
                     <td className="px-4 py-3 text-right font-numbers text-red-600">{formatCurrency(s.deductions)}</td>
                     <td className="px-4 py-3 text-right font-numbers font-semibold text-emerald-700">{formatCurrency(s.netSalary)}</td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => togglePaymentStatus(s)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                          s.paymentStatus === 'paid'
+                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                            : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                        }`}
+                        title={s.paymentStatus === 'paid' ? 'Click to mark as pending' : 'Click to mark as paid'}
+                      >
+                        {s.paymentStatus === 'paid' ? <CheckCircle2 size={13} /> : <Circle size={13} />}
+                        {s.paymentStatus === 'paid' ? 'Paid' : 'Pending'}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {s.paymentProofUrl ? (
+                        <button
+                          onClick={async () => {
+                            const token = localStorage.getItem('token');
+                            const res = await fetch(`${BASE}${s.paymentProofUrl!.replace(/^\//, '')}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                            if (res.ok) {
+                              const blob = await res.blob();
+                              const url = URL.createObjectURL(blob);
+                              window.open(url, '_blank');
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                        >
+                          <ExternalLink size={13} /> View
+                        </button>
+                      ) : (
+                        <label className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+                          <Upload size={13} /> Upload
+                          <input type="file" className="hidden" accept="image/*,.pdf" onChange={(e) => { if (e.target.files?.[0]) uploadProof(s.id, e.target.files[0]); e.target.value = ''; }} />
+                        </label>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <button onClick={() => deleteSalaryRecord(s.id)} className="p-1.5 rounded-lg hover:bg-red-50 transition-colors text-muted-foreground hover:text-red-600"><Trash2 size={15} /></button>
                     </td>

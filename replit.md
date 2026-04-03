@@ -119,3 +119,6 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Attendance**: Daily attendance with bulk save — statuses: present, half-day, absent, week-off. All users can mark attendance
 - **Leave Management**: Record paid/unpaid leaves per employee per date. Week-off = paid leave (no deduction). All users can record leaves
 - **Salary Generation**: Admin-only. Auto-computes net salary from base salary, attendance, leaves. Deductions for unpaid leaves, absences, and half-days (0.5× per-day rate). DB-level date filtering with LIKE on YYYY-MM prefix
+- **Salary Payment Status**: Each salary record has `paymentStatus` (pending/paid), `paymentProofUrl`, `paidAt`, `paidBy`. Admin can toggle paid/pending status and upload payment proof (image/PDF, max 5MB). Proof files served via authenticated route (not public)
+- **Sales Fixed Pricing**: Sales entries always use the menu item's fixed `sellingPrice` — the price field is read-only in the UI and enforced server-side. Explicit `discount` field shown in form and table. Total = qty × menuPrice − discount
+- **Salary Proof Upload**: POST /salary/:id/upload-proof (multipart, admin-only), GET /uploads/salary-proofs/:filename (authenticated)

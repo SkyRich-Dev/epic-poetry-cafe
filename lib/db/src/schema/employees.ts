@@ -56,5 +56,9 @@ export const salaryRecordsTable = pgTable("salary_records", {
   absentDays: integer("absent_days").notNull().default(0),
   deductions: doublePrecision("deductions").notNull().default(0),
   netSalary: doublePrecision("net_salary").notNull().default(0),
+  paymentStatus: text("payment_status").notNull().default("pending"),
+  paymentProofUrl: text("payment_proof_url"),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  paidBy: integer("paid_by"),
   generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
 });
