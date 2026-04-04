@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { db, posIntegrationsTable, petpoojaItemMappingsTable, menuItemsTable,
+import { db, posIntegrationsTable, menuItemsTable, categoriesTable,
   salesInvoicesTable, salesInvoiceLinesTable, salesImportBatchesTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { isFutureDate } from "../lib/dateValidation";
+import { generateCode } from "../lib/codeGenerator";
 import crypto from "crypto";
 
 const router = Router();
@@ -152,10 +153,6 @@ router.get("/pos-integrations/:id/stats", authMiddleware, adminOnly, async (req,
   if (!integration) { res.status(404).json({ error: "Not found" }); return; }
 
   if (integration.provider === "petpooja") {
-    const allMappings = await db.select().from(petpoojaItemMappingsTable);
-    const mapped = allMappings.filter(m => m.menuItemId !== null);
-    const unmapped = allMappings.filter(m => m.menuItemId === null);
-
     const batches = await db.select().from(salesImportBatchesTable)
       .where(eq(salesImportBatchesTable.sourceType, "petpooja"))
       .orderBy(sql`${salesImportBatchesTable.createdAt} DESC`)
@@ -165,11 +162,13 @@ router.get("/pos-integrations/:id/stats", authMiddleware, adminOnly, async (req,
       .from(salesInvoicesTable)
       .where(eq(salesInvoicesTable.sourceType, "petpooja"));
 
+    const autoCreatedMenuItems = await db.select({ count: sql<number>`count(*)::int` })
+      .from(menuItemsTable)
+      .where(sql`${menuItemsTable.code} LIKE 'PP%'`);
+
     res.json({
-      totalMappings: allMappings.length,
-      mappedItems: mapped.length,
-      unmappedItems: unmapped.length,
       totalInvoicesImported: invoiceCount[0]?.count || 0,
+      autoCreatedMenuItems: autoCreatedMenuItems[0]?.count || 0,
       totalOrdersSynced: integration.totalOrdersSynced,
       lastSync: integration.lastSyncAt,
       lastSyncStatus: integration.lastSyncStatus,
@@ -207,21 +206,18 @@ router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> 
   const ppOrder = props.Order;
   const ppItems = props.OrderItem;
   const ppCustomer = props.Customer;
-  const ppTaxes = props.Tax || [];
-  const ppDiscounts = props.Discount || [];
 
   if (!ppOrder || !ppItems || !Array.isArray(ppItems) || ppItems.length === 0) {
     res.status(400).json({ error: "Missing Order or OrderItem in payload" }); return;
   }
 
-  const mappings = await db.select().from(petpoojaItemMappingsTable);
-  const mapByPpId = new Map(mappings.filter(m => m.petpoojaItemId && m.menuItemId).map(m => [m.petpoojaItemId!, m]));
-  const mapByPpName = new Map(mappings.filter(m => m.menuItemId).map(m => [m.petpoojaItemName.toLowerCase().trim(), m]));
-  const menuItems = await db.select().from(menuItemsTable);
-  const menuById = new Map(menuItems.map(m => [m.id, m]));
-  const menuByName = new Map(menuItems.map(m => [m.name.toLowerCase().trim(), m]));
+  const allCategories = await db.select().from(categoriesTable);
+  const categoryByName = new Map(allCategories.map(c => [c.name.toLowerCase().trim(), c]));
 
-  const errors: string[] = [];
+  const allMenuItems = await db.select().from(menuItemsTable);
+  const menuByName = new Map(allMenuItems.map(m => [m.name.toLowerCase().trim(), m]));
+
+  const autoCreated: string[] = [];
 
   try {
     const createdOn = ppOrder.created_on || "";
@@ -249,9 +245,7 @@ router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> 
 
     const totalDiscount = Number(ppOrder.discount_total || 0);
     const orderTaxTotal = Number(ppOrder.tax_total || 0);
-    const roundOff = Number(ppOrder.round_off || 0);
     const ppTotal = Number(ppOrder.total || 0);
-    const coreTotal = Number(ppOrder.core_total || 0);
     const serviceCharge = Number(ppOrder.service_charge || 0);
     const packagingCharge = Number(ppOrder.packaging_charge || 0);
     const deliveryCharges = Number(ppOrder.delivery_charges || 0);
@@ -259,9 +253,7 @@ router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> 
     const lineData: any[] = [];
 
     for (const item of ppItems) {
-      const ppItemId = String(item.itemid || "").trim();
       const ppItemName = String(item.name || "").trim();
-      const ppItemCode = String(item.itemcode || "").trim();
       const ppCategoryName = String(item.category_name || "").trim();
       const qty = Number(item.quantity || 1);
       const itemPrice = Number(item.price || 0);
@@ -276,46 +268,35 @@ router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> 
         }
       }
 
-      let menuItem: any = null;
-      const mappingById = ppItemId ? mapByPpId.get(ppItemId) : undefined;
-      const mappingByName = mapByPpName.get(ppItemName.toLowerCase().trim());
-      const mapping = mappingById || mappingByName;
-
-      if (mapping && mapping.menuItemId) {
-        menuItem = menuById.get(mapping.menuItemId);
-      } else {
-        menuItem = menuByName.get(ppItemName.toLowerCase().trim());
-      }
-
-      if (!mapping) {
-        const existingMapping = mappings.find(m =>
-          (ppItemId && m.petpoojaItemId === ppItemId) ||
-          m.petpoojaItemName.toLowerCase().trim() === ppItemName.toLowerCase().trim()
-        );
-        if (!existingMapping) {
-          await db.insert(petpoojaItemMappingsTable).values({
-            petpoojaItemId: ppItemId || null,
-            petpoojaItemName: ppItemName,
-            petpoojaItemCode: ppItemCode || null,
-            petpoojaCategoryName: ppCategoryName || null,
-            menuItemId: menuItem?.id || null,
-          });
-          mappings.push({
-            id: 0,
-            petpoojaItemId: ppItemId,
-            petpoojaItemName: ppItemName,
-            petpoojaItemCode: ppItemCode || null,
-            petpoojaCategoryName: ppCategoryName || null,
-            menuItemId: menuItem?.id || null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        }
-      }
+      let menuItem = menuByName.get(ppItemName.toLowerCase().trim());
 
       if (!menuItem) {
-        errors.push(`Unmapped item: "${ppItemName}" (ID: ${ppItemId})`);
-        continue;
+        let categoryId: number | null = null;
+        if (ppCategoryName) {
+          let category = categoryByName.get(ppCategoryName.toLowerCase().trim());
+          if (!category) {
+            const [newCat] = await db.insert(categoriesTable).values({
+              name: ppCategoryName,
+              type: "menu",
+            }).returning();
+            category = newCat;
+            categoryByName.set(ppCategoryName.toLowerCase().trim(), category);
+            autoCreated.push(`Category: ${ppCategoryName}`);
+          }
+          categoryId = category.id;
+        }
+
+        const code = await generateCode("PP", "menu_items");
+        const [newItem] = await db.insert(menuItemsTable).values({
+          code,
+          name: ppItemName,
+          categoryId,
+          sellingPrice: itemPrice,
+          active: true,
+        }).returning();
+        menuItem = newItem;
+        menuByName.set(ppItemName.toLowerCase().trim(), menuItem);
+        autoCreated.push(`Menu Item: ${ppItemName} (${code}) @ ₹${itemPrice}`);
       }
 
       const usePrice = itemTotal > 0 ? itemTotal / qty : (menuItem.sellingPrice || itemPrice);
@@ -323,7 +304,7 @@ router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> 
 
       lineData.push({
         menuItemId: menuItem.id,
-        itemCodeSnapshot: menuItem.code || ppItemCode,
+        itemCodeSnapshot: menuItem.code,
         itemNameSnapshot: menuItem.name,
         fixedPrice: usePrice,
         quantity: qty,
@@ -332,15 +313,6 @@ router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> 
         ppItemTax: itemTax,
         gstPercent: integration.defaultGstPercent || 5,
       });
-    }
-
-    if (lineData.length === 0) {
-      await updateSyncStatus(integrationId, 0, 1);
-      res.json({
-        success: false,
-        message: `Order ${invoiceNo}: All items unmapped`,
-        errors,
-      }); return;
     }
 
     let grossAmount = lineData.reduce((s, l) => s + l.grossLineAmount, 0);
@@ -440,14 +412,13 @@ router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> 
     res.json({
       success: true,
       message: `Order ${invoiceNo} processed successfully`,
-      unmappedItems: errors.length > 0 ? errors : undefined,
+      autoCreated: autoCreated.length > 0 ? autoCreated : undefined,
     });
   } catch (e: any) {
     await updateSyncStatus(integrationId, 0, 1);
     res.status(500).json({
       success: false,
       message: `Order processing failed: ${e.message}`,
-      errors,
     });
   }
 });

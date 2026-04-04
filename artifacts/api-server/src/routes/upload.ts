@@ -14,10 +14,7 @@ import {
   vendorsTable,
   ingredientsTable,
   expensesTable,
-  salesInvoicesTable,
-  salesInvoiceLinesTable,
   salesImportBatchesTable,
-  petpoojaItemMappingsTable,
 } from "@workspace/db";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
@@ -709,12 +706,11 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
   if (error) { res.status(400).json({ error }); return; }
   if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
 
-  const mappings = await db.select().from(petpoojaItemMappingsTable);
-  const mapByPpName = new Map(mappings.filter(m => m.menuItemId).map(m => [m.petpoojaItemName.toLowerCase().trim(), m]));
-  const mapByPpId = new Map(mappings.filter(m => m.petpoojaItemId && m.menuItemId).map(m => [m.petpoojaItemId!, m]));
   const menuItems = await db.select().from(menuItemsTable);
-  const menuById = new Map(menuItems.map(m => [m.id, m]));
   const menuByName = new Map(menuItems.map(m => [m.name.toLowerCase().trim(), m]));
+  const allCategories = await db.select().from(categoriesTable);
+  const categoryByName = new Map(allCategories.map(c => [c.name.toLowerCase().trim(), c]));
+  const autoCreated: string[] = [];
 
   const grouped = new Map<string, {
     salesDate: string; invoiceNo: string; invoiceTime: string; orderType: string;
@@ -722,7 +718,6 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
     lines: { menuItemId: number; menuItemName: string; menuItemCode: string; fixedPrice: number; quantity: number; gstPercent: number; rowIndex: number }[];
   }>();
   const results: { row: number; status: string; error?: string; data?: any }[] = [];
-  const unmappedItems = new Set<string>();
 
   for (let i = 0; i < rows.length; i++) {
     const raw = normalizeRow(rows[i]);
@@ -737,35 +732,35 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
       const totalDiscount = toNum(raw.discount || raw.total_discount || 0);
 
       const ppItemName = String(raw.item || raw.item_name || raw.menu_item || "").trim();
-      const ppItemId = String(raw.item_id || raw.petpooja_item_id || "").trim();
+      const ppCategoryName = String(raw.category || raw.category_name || "").trim();
       const quantity = toNum(raw.quantity || raw.qty);
+      const price = toNum(raw.price || raw.rate || raw.selling_price || 0);
       const gstPercent = toNum(raw.gst_percent || raw.gst || raw.tax || 5);
 
-      if (!ppItemName && !ppItemId) { results.push({ row: i + 2, status: "error", error: "Item name is required" }); continue; }
+      if (!ppItemName) { results.push({ row: i + 2, status: "error", error: "Item name is required" }); continue; }
       if (quantity <= 0) { results.push({ row: i + 2, status: "error", error: "Quantity must be > 0" }); continue; }
 
-      let mapping = ppItemId ? mapByPpId.get(ppItemId) : undefined;
-      if (!mapping && ppItemName) mapping = mapByPpName.get(ppItemName.toLowerCase());
-
-      let menuItem: any = null;
-      if (mapping?.menuItemId) {
-        menuItem = menuById.get(mapping.menuItemId);
-      } else {
-        menuItem = menuByName.get(ppItemName.toLowerCase());
-      }
+      let menuItem = menuByName.get(ppItemName.toLowerCase().trim());
 
       if (!menuItem) {
-        unmappedItems.add(ppItemName);
-        if (!mapping) {
-          const existing = await db.select().from(petpoojaItemMappingsTable).where(eq(petpoojaItemMappingsTable.petpoojaItemName, ppItemName));
-          if (existing.length === 0) {
-            await db.insert(petpoojaItemMappingsTable).values({
-              petpoojaItemId: ppItemId || null, petpoojaItemName: ppItemName,
-            });
+        let categoryId: number | null = null;
+        if (ppCategoryName) {
+          let category = categoryByName.get(ppCategoryName.toLowerCase().trim());
+          if (!category) {
+            const [newCat] = await db.insert(categoriesTable).values({ name: ppCategoryName, type: "menu" }).returning();
+            category = newCat;
+            categoryByName.set(ppCategoryName.toLowerCase().trim(), category);
+            autoCreated.push(`Category: ${ppCategoryName}`);
           }
+          categoryId = category.id;
         }
-        results.push({ row: i + 2, status: "error", error: `Unmapped Petpooja item: "${ppItemName}". Please map it in Item Mapping.` });
-        continue;
+        const code = await generateCode("PP", "menu_items");
+        const [newItem] = await db.insert(menuItemsTable).values({
+          code, name: ppItemName, categoryId, sellingPrice: price, active: true,
+        }).returning();
+        menuItem = newItem;
+        menuByName.set(ppItemName.toLowerCase().trim(), menuItem);
+        autoCreated.push(`Menu Item: ${ppItemName} (${code}) @ ₹${price}`);
       }
 
       const groupKey = `${salesDate}_${invoiceNo || `row${i}`}`;
@@ -853,35 +848,8 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
     successCount, failedCount: rows.length - successCount,
   }).where(eq(salesImportBatchesTable.id, batch.id));
 
-  await createAuditLog("sales_invoices", batch.id, "import", null, { source: "petpooja", file: req.file.originalname, total: rows.length, success: successCount, unmapped: Array.from(unmappedItems) });
-  res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results, unmappedItems: Array.from(unmappedItems) });
-});
-
-router.get("/petpooja-mappings", authMiddleware, async (_req, res): Promise<void> => {
-  const mappings = await db.select({
-    id: petpoojaItemMappingsTable.id,
-    petpoojaItemId: petpoojaItemMappingsTable.petpoojaItemId,
-    petpoojaItemName: petpoojaItemMappingsTable.petpoojaItemName,
-    menuItemId: petpoojaItemMappingsTable.menuItemId,
-    menuItemName: menuItemsTable.name,
-    createdAt: petpoojaItemMappingsTable.createdAt,
-  }).from(petpoojaItemMappingsTable)
-    .leftJoin(menuItemsTable, eq(petpoojaItemMappingsTable.menuItemId, menuItemsTable.id));
-  res.json(mappings);
-});
-
-router.patch("/petpooja-mappings/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  const { menuItemId } = req.body;
-  const [updated] = await db.update(petpoojaItemMappingsTable).set({ menuItemId: menuItemId || null }).where(eq(petpoojaItemMappingsTable.id, id)).returning();
-  if (!updated) { res.status(404).json({ error: "Mapping not found" }); return; }
-  res.json(updated);
-});
-
-router.delete("/petpooja-mappings/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  await db.delete(petpoojaItemMappingsTable).where(eq(petpoojaItemMappingsTable.id, id));
-  res.json({ success: true });
+  await createAuditLog("sales_invoices", batch.id, "import", null, { source: "petpooja", file: req.file.originalname, total: rows.length, success: successCount, autoCreated });
+  res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results, autoCreated: autoCreated.length > 0 ? autoCreated : undefined });
 });
 
 router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<void> => {

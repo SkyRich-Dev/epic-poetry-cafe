@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useListCategories, useCreateCategory, useListUom, useGetConfig, useUpdateConfig, useListUsers, useCreateUser, useUpdateUser } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, formatDate } from '../components/ui-extras';
-import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download, Trash2, Plug, Wifi, WifiOff, RefreshCw, Copy, ExternalLink, AlertTriangle, CheckCircle2, Link2, Trash } from 'lucide-react';
+import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download, Trash2, Plug, Wifi, WifiOff, RefreshCw, Copy, AlertTriangle, CheckCircle2, Trash } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 
@@ -751,7 +751,7 @@ function POSIntegrationsTab() {
           </div>
 
           <div className="bg-card rounded-xl border p-5 space-y-4">
-            <h4 className="font-semibold flex items-center gap-2"><Link2 size={16} /> Webhook Endpoint</h4>
+            <h4 className="font-semibold flex items-center gap-2"><Wifi size={16} /> Webhook Endpoint</h4>
             <p className="text-xs text-muted-foreground">Use this URL in your POS system to push orders automatically.</p>
             <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{webhookUrl(detailView.id)}</div>
             <button onClick={() => copyToClipboard(webhookUrl(detailView.id))} className="text-xs text-primary hover:underline flex items-center gap-1"><Copy size={12} /> Copy URL</button>
@@ -795,13 +795,8 @@ function POSIntegrationsTab() {
                 <p className="text-xl font-bold font-numbers">{stats.totalInvoicesImported}</p>
               </div>
               <div className="bg-card rounded-xl border p-4">
-                <p className="text-xs text-muted-foreground uppercase">Mapped Items</p>
-                <p className="text-xl font-bold font-numbers text-emerald-600">{stats.mappedItems}</p>
-              </div>
-              <div className="bg-card rounded-xl border p-4">
-                <p className="text-xs text-muted-foreground uppercase">Unmapped Items</p>
-                <p className="text-xl font-bold font-numbers text-orange-600">{stats.unmappedItems}</p>
-                {stats.unmappedItems > 0 && <a href="/petpooja-mappings" className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"><ExternalLink size={10} /> Map Items</a>}
+                <p className="text-xs text-muted-foreground uppercase">Auto-Created Items</p>
+                <p className="text-xl font-bold font-numbers text-blue-600">{stats.autoCreatedMenuItems || 0}</p>
               </div>
             </div>
 
@@ -905,8 +900,8 @@ function POSIntegrationsTab() {
             <p>Copy the webhook URL and secret into your POS system settings. Orders push automatically.</p>
           </div>
           <div>
-            <p className="font-medium text-foreground mb-1">3. Map Menu Items</p>
-            <p>Go to Petpooja Mapping to link POS items with your cafe menu. Unmapped items are auto-registered.</p>
+            <p className="font-medium text-foreground mb-1">3. Auto-Created Items</p>
+            <p>When orders arrive, categories and menu items are auto-created from POS data if they don't already exist.</p>
           </div>
         </div>
       </div>

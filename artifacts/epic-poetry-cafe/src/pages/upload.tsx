@@ -39,7 +39,7 @@ const UPLOAD_CONFIGS: Record<UploadType, { label: string; description: string; c
   },
   petpooja: {
     label: 'Petpooja Import',
-    description: 'Import Petpooja sales data. Items are matched via the Petpooja Item Mapping table. Unmapped items are auto-registered for mapping.',
+    description: 'Import Petpooja sales data. Items are matched by name to existing menu items. New items and categories are auto-created if they don\'t exist.',
     columns: ['Date', 'Order_ID', 'Time', 'Order_Type', 'Customer', 'Item (name)', 'Quantity', 'GST_Percent', 'Discount', 'Payment_Mode'],
   },
 };
