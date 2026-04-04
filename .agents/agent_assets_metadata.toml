@@ -12,3 +12,15 @@ id = "5ZJCHtYbDNZ5anhUKbKad"
 uri = "file://docs/DEVELOPER_GUIDE.md"
 type = "text"
 title = "Developer Guide"
+
+[[outputs]]
+id = "IU7wf7LEjrg5bq3thWpR_"
+uri = "file://docs/SRS.docx"
+type = "word_document"
+title = "SRS - Epic Poetry Cafe (Word)"
+
+[[outputs]]
+id = "FPMma-y7M-Ak0YLcOC27h"
+uri = "file://docs/DEVELOPER_GUIDE.docx"
+type = "word_document"
+title = "Developer Guide - Epic Poetry Cafe (Word)"
