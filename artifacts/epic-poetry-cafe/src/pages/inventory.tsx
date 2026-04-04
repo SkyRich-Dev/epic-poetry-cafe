@@ -3,9 +3,11 @@ import { useGetStockOverview, useSaveStockSnapshot } from '@workspace/api-client
 import { PageHeader, Button, Input, Modal, formatCurrency, Badge } from '../components/ui-extras';
 import { PackageSearch, AlertCircle, Save } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
 
 export default function Inventory() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: stock, isLoading } = useGetStockOverview();
   const saveMut = useSaveStockSnapshot();
   
@@ -29,7 +31,8 @@ export default function Inventory() {
       await saveMut.mutateAsync({ data: { snapshotDate, items } });
       queryClient.invalidateQueries({ queryKey: ['/api/inventory/stock-overview'] });
       setIsSnapshotOpen(false);
-    } catch(e) { console.error(e); }
+      toast({ title: 'Stock snapshot saved' });
+    } catch(e: any) { toast({ title: 'Failed to save snapshot', description: e.message, variant: 'destructive' }); }
   };
 
   return (

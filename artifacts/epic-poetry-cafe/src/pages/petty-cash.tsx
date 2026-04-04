@@ -4,6 +4,7 @@ import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, St
 import { Plus, Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
+import { useToast } from '@/hooks/use-toast';
 
 const METHODS = ['Cash', 'Bank Withdrawal', 'UPI', 'Card Withdrawal', 'Owner Contribution', 'Manager Float'];
 const CATEGORIES = ['Local Purchase', 'Cleaning Materials', 'Delivery Charges', 'Petty Maintenance', 'Staff Emergency', 'Small Repairs', 'Local Transport', 'Market Purchase', 'Tea/Snacks', 'Other'];
@@ -17,6 +18,7 @@ function TypeBadge({ type }: { type: string }) {
 export default function PettyCash() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { toast } = useToast();
   const isAdmin = user?.role === 'admin';
   const isViewer = user?.role === 'viewer';
   const [fromDate, setFromDate] = useState('');
@@ -132,7 +134,7 @@ export default function PettyCash() {
     try {
       await deleteMut.mutateAsync({ id });
       queryClient.invalidateQueries({ queryKey: ['/api/petty-cash'] });
-    } catch (e) { console.error(e); }
+    } catch (e: any) { toast({ title: 'Failed to delete entry', description: e.message, variant: 'destructive' }); }
   };
 
   return (

@@ -5,6 +5,7 @@ import { Plus, Phone, Mail, Pencil, Trash2, Eye, AlertTriangle } from 'lucide-re
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useLocation } from 'wouter';
+import { useToast } from '@/hooks/use-toast';
 
 const BASE = import.meta.env.BASE_URL || '/';
 async function apiFetch(path: string) {
@@ -27,6 +28,7 @@ export default function Vendors() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [formData, setFormData] = useState(emptyForm);
+  const { toast } = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
   const [vendorSummaries, setVendorSummaries] = useState<Map<number, any>>(new Map());
   const [filter, setFilter] = useState<'all' | 'withDues' | 'overdue'>('all');
@@ -53,26 +55,31 @@ export default function Vendors() {
   };
 
   const handleSave = async () => {
+    if (!formData.name.trim()) { toast({ title: 'Vendor name is required', variant: 'destructive' }); return; }
     try {
       const token = localStorage.getItem('token');
       if (editId) {
-        await fetch(`${BASE}api/vendors/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
+        const res = await fetch(`${BASE}api/vendors/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
+        if (!res.ok) throw new Error(await res.text());
       } else {
         await createMut.mutateAsync({ data: formData as any });
       }
       queryClient.invalidateQueries({ queryKey: ['/api/vendors'] });
       setIsModalOpen(false);
-    } catch(e) { console.error(e); }
+      toast({ title: editId ? 'Vendor updated' : 'Vendor created' });
+    } catch(e: any) { toast({ title: 'Failed to save vendor', description: e.message, variant: 'destructive' }); }
   };
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
     try {
       const token = localStorage.getItem('token');
-      await fetch(`${BASE}api/vendors/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetch(`${BASE}api/vendors/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) { const err = await res.json().catch(() => ({ error: 'Delete failed' })); throw new Error(err.error || 'Delete failed'); }
       queryClient.invalidateQueries({ queryKey: ['/api/vendors'] });
       setDeleteConfirm(null);
-    } catch(e) { console.error(e); }
+      toast({ title: 'Vendor deleted' });
+    } catch(e: any) { toast({ title: 'Failed to delete vendor', description: e.message, variant: 'destructive' }); }
   };
 
   const filteredVendors = vendors?.filter(v => {

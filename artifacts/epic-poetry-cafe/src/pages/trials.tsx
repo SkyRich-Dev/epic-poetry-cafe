@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useListTrials, useCreateTrial } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Modal, Badge } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, Badge, formatCurrency } from '../components/ui-extras';
 import { FlaskConical, Plus } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
 
 export default function Trials() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: trials, isLoading } = useListTrials();
   const createMut = useCreateTrial();
   
@@ -13,11 +15,13 @@ export default function Trials() {
   const [formData, setFormData] = useState({ proposedItemName: '', targetCost: 0, targetSellingPrice: 0 });
 
   const handleSave = async () => {
+    if (!formData.proposedItemName.trim()) { toast({ title: 'Item name is required', variant: 'destructive' }); return; }
     try {
       await createMut.mutateAsync({ data: formData as any });
       queryClient.invalidateQueries({ queryKey: ['/api/trials'] });
       setIsModalOpen(false);
-    } catch(e) {}
+      toast({ title: 'Trial created' });
+    } catch(e: any) { toast({ title: 'Failed to create trial', description: e.message, variant: 'destructive' }); }
   };
 
   return (
@@ -41,11 +45,11 @@ export default function Trials() {
             <div className="space-y-2 relative z-10">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Target Cost:</span>
-                <span className="font-medium">₹{Number(t.targetCost).toFixed(2)}</span>
+                <span className="font-medium">{formatCurrency(Number(t.targetCost))}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Target Price:</span>
-                <span className="font-medium">₹{Number(t.targetSellingPrice).toFixed(2)}</span>
+                <span className="font-medium">{formatCurrency(Number(t.targetSellingPrice))}</span>
               </div>
             </div>
             <div className="mt-6 relative z-10">

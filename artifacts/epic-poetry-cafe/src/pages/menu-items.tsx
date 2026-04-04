@@ -4,6 +4,7 @@ import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge,
 import { Plus, Edit, ChefHat, Tag, DollarSign, Calculator, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
+import { useToast } from '@/hooks/use-toast';
 
 export default function MenuItems() {
   const queryClient = useQueryClient();
@@ -12,6 +13,7 @@ export default function MenuItems() {
   const isViewer = user?.role === 'viewer';
   const { data: menuItems, isLoading } = useListMenuItems();
   const { data: categories } = useListCategories({ type: 'menu' });
+  const { toast } = useToast();
   const createMut = useCreateMenuItem();
   const updateMut = useUpdateMenuItem();
 
@@ -36,6 +38,8 @@ export default function MenuItems() {
   };
 
   const handleSaveItem = async () => {
+    if (!formData.name?.trim()) { toast({ title: 'Item name is required', variant: 'destructive' }); return; }
+    if ((formData as any).sellingPrice <= 0) { toast({ title: 'Selling price must be greater than 0', variant: 'destructive' }); return; }
     try {
       if (editId) {
         await updateMut.mutateAsync({ id: editId, data: formData as any });
@@ -44,7 +48,8 @@ export default function MenuItems() {
       }
       queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
       setIsModalOpen(false);
-    } catch (e) { console.error(e); }
+      toast({ title: editId ? 'Menu item updated' : 'Menu item created' });
+    } catch (e: any) { toast({ title: 'Failed to save menu item', description: e.message, variant: 'destructive' }); }
   };
 
   const handleDelete = async () => {
@@ -52,10 +57,12 @@ export default function MenuItems() {
     try {
       const base = import.meta.env.BASE_URL || '/';
       const token = localStorage.getItem('token');
-      await fetch(`${base}api/menu-items/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetch(`${base}api/menu-items/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) { const err = await res.json().catch(() => ({ error: 'Delete failed' })); throw new Error(err.error || 'Delete failed'); }
       queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
       setDeleteConfirm(null);
-    } catch(e) { console.error(e); }
+      toast({ title: 'Menu item deleted' });
+    } catch(e: any) { toast({ title: 'Cannot delete menu item', description: e.message, variant: 'destructive' }); }
   };
 
   const openRecipe = (item: any) => { setActiveItem(item); setRecipeModalOpen(true); };
@@ -165,6 +172,7 @@ export default function MenuItems() {
 
 function RecipeBuilderModal({ item, onClose, isViewer }: { item: any, onClose: () => void, isViewer: boolean }) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: initialRecipe, isLoading } = useGetRecipe(item.id);
   const { data: costing, refetch: refetchCosting } = useGetMenuItemCosting(item.id);
   const { data: ingredients } = useListIngredients({ active: true });
@@ -197,11 +205,12 @@ function RecipeBuilderModal({ item, onClose, isViewer }: { item: any, onClose: (
 
   const handleSave = async () => {
     try {
-      await saveMut.mutateAsync({ id: item.id, data: { lines: lines.filter(l => l.ingredientId > 0) } });
+      const validLines = lines.filter(l => l.ingredientId > 0);
+      await saveMut.mutateAsync({ id: item.id, data: { lines: validLines } });
       queryClient.invalidateQueries({ queryKey: [`/api/menu-items/${item.id}/recipe`] });
       queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
       refetchCosting();
-    } catch (e) { console.error(e); }
+    } catch (e: any) { toast({ title: 'Failed to save recipe', description: e.message, variant: 'destructive' }); }
   };
 
   return (

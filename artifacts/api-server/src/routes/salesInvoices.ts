@@ -255,7 +255,7 @@ router.get("/sales-invoices-item-summary", authMiddleware, async (req, res): Pro
     finalLineAmount: salesInvoiceLinesTable.finalLineAmount,
     invoiceId: salesInvoiceLinesTable.invoiceId,
   }).from(salesInvoiceLinesTable)
-    .where(sql`${salesInvoiceLinesTable.invoiceId} IN (${sql.raw(invoiceIds.join(','))})`);
+    .where(sql`${salesInvoiceLinesTable.invoiceId} IN (${sql.join(invoiceIds.map(id => sql`${id}`), sql`, `)})`);
 
   const itemMap = new Map<number, any>();
   for (const line of allLines) {
@@ -354,7 +354,7 @@ router.get("/sales-invoices-consumption", authMiddleware, async (req, res): Prom
     menuItemId: salesInvoiceLinesTable.menuItemId,
     quantity: salesInvoiceLinesTable.quantity,
   }).from(salesInvoiceLinesTable)
-    .where(sql`${salesInvoiceLinesTable.invoiceId} IN (${sql.raw(invoiceIds.join(','))})`);
+    .where(sql`${salesInvoiceLinesTable.invoiceId} IN (${sql.join(invoiceIds.map(id => sql`${id}`), sql`, `)})`);
 
   const itemQty = new Map<number, number>();
   for (const l of lines) {

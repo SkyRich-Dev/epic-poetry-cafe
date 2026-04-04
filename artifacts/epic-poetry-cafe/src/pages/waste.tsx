@@ -4,6 +4,7 @@ import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, format
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
+import { useToast } from '@/hooks/use-toast';
 
 export default function Waste() {
   const queryClient = useQueryClient();
@@ -20,23 +21,28 @@ export default function Waste() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [formData, setFormData] = useState({ wasteDate: new Date().toISOString().split('T')[0], wasteType: 'INGREDIENT', ingredientId: 0, quantity: 1, uom: 'g', reason: '' });
+  const { toast } = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
 
   const openCreate = () => { setEditId(null); setFormData({ wasteDate: new Date().toISOString().split('T')[0], wasteType: 'INGREDIENT', ingredientId: 0, quantity: 1, uom: 'g', reason: '' }); setIsModalOpen(true); };
   const openEdit = (w: any) => { setEditId(w.id); setFormData({ wasteDate: w.wasteDate, wasteType: w.wasteType, ingredientId: w.ingredientId || 0, quantity: Number(w.quantity), uom: w.uom, reason: w.reason || '' }); setIsModalOpen(true); };
 
   const handleSave = async () => {
+    if (formData.wasteType === 'INGREDIENT' && !formData.ingredientId) { toast({ title: 'Please select an ingredient', variant: 'destructive' }); return; }
+    if (formData.quantity <= 0) { toast({ title: 'Quantity must be greater than 0', variant: 'destructive' }); return; }
     try {
       const base = import.meta.env.BASE_URL || '/';
       const token = localStorage.getItem('token');
       if (editId) {
-        await fetch(`${base}api/waste/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
+        const res = await fetch(`${base}api/waste/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
+        if (!res.ok) throw new Error(await res.text());
       } else {
         await createMut.mutateAsync({ data: formData as any });
       }
       queryClient.invalidateQueries({ queryKey: ['/api/waste'] });
       setIsModalOpen(false);
-    } catch(e) { console.error(e); }
+      toast({ title: editId ? 'Waste entry updated' : 'Waste entry logged' });
+    } catch(e: any) { toast({ title: 'Failed to save waste entry', description: e.message, variant: 'destructive' }); }
   };
 
   const handleDelete = async () => {
@@ -44,10 +50,12 @@ export default function Waste() {
     try {
       const base = import.meta.env.BASE_URL || '/';
       const token = localStorage.getItem('token');
-      await fetch(`${base}api/waste/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetch(`${base}api/waste/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) throw new Error(await res.text());
       queryClient.invalidateQueries({ queryKey: ['/api/waste'] });
       setDeleteConfirm(null);
-    } catch(e) { console.error(e); }
+      toast({ title: 'Waste entry deleted' });
+    } catch(e: any) { toast({ title: 'Failed to delete waste entry', description: e.message, variant: 'destructive' }); }
   };
 
   const handleVerify = async (id: number) => { await apiVerify('waste', id); queryClient.invalidateQueries({ queryKey: ['/api/waste'] }); };

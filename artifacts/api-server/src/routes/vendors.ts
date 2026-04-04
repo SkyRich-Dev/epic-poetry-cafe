@@ -91,10 +91,20 @@ router.patch("/vendors/:id", authMiddleware, async (req, res): Promise<void> => 
 router.delete("/vendors/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = UpdateVendorParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const [vendor] = await db.delete(vendorsTable).where(eq(vendorsTable.id, params.data.id)).returning();
-  if (!vendor) { res.status(404).json({ error: "Not found" }); return; }
-  await createAuditLog("vendors", vendor.id, "delete", vendor, null);
-  res.json({ success: true });
+  const [existing] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, params.data.id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  const [usedInPurchase] = await db.select({ id: purchasesTable.id }).from(purchasesTable).where(eq(purchasesTable.vendorId, params.data.id)).limit(1);
+  if (usedInPurchase) { res.status(400).json({ error: "Cannot delete: this vendor has purchase records." }); return; }
+
+  try {
+    const [vendor] = await db.delete(vendorsTable).where(eq(vendorsTable.id, params.data.id)).returning();
+    await createAuditLog("vendors", vendor.id, "delete", vendor, null);
+    res.json({ success: true });
+  } catch (e: any) {
+    if (e.code === '23503') { res.status(400).json({ error: "Cannot delete: this vendor is referenced by other records." }); return; }
+    throw e;
+  }
 });
 
 router.get("/vendors/:id/spend-summary", async (req, res): Promise<void> => {

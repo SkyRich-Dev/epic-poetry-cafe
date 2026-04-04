@@ -201,6 +201,16 @@ router.delete("/purchases/:id", authMiddleware, async (req, res): Promise<void> 
   const [existing] = await db.select().from(purchasesTable).where(eq(purchasesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
+
+  const lines = await db.select().from(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, id));
+  for (const line of lines) {
+    const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
+    if (ing) {
+      const newStock = Math.max(0, ing.currentStock - line.quantity);
+      await db.update(ingredientsTable).set({ currentStock: newStock }).where(eq(ingredientsTable.id, line.ingredientId));
+    }
+  }
+
   await db.delete(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, id));
   await db.delete(purchasesTable).where(eq(purchasesTable.id, id));
   await createAuditLog("purchases", id, "delete", existing, null);

@@ -24,7 +24,7 @@ The system is built as a monorepo utilizing `pnpm workspaces` for managing vario
 **Backend:**
 - An Express 5 API server, located in `artifacts/api-server`.
 - Uses PostgreSQL with Drizzle ORM for data persistence, defining over 22 tables.
-- Implements a custom JWT authentication scheme (HMAC-SHA256) with `SESSION_SECRET` and role-based access control (`admin`, `manager`, `viewer`).
+- Implements a custom JWT authentication scheme (HMAC-SHA256) with `SESSION_SECRET` and role-based access control (`admin`, `manager`, `viewer`). Password hashing uses PBKDF2 with random salt (legacy SHA256 fallback for migration).
 - All API routes are prefixed with `/api`. Global auth middleware protects most routes, with exceptions for `/api/healthz` and `/api/auth/login`.
 - `Orval` is used for API client code generation from an OpenAPI specification, generating React Query hooks (`lib/api-client-react/`) and Zod schemas (`lib/api-zod/`).
 - Validation is handled using `Zod`.
@@ -38,7 +38,7 @@ The system is built as a monorepo utilizing `pnpm workspaces` for managing vario
 - Uploaded payment proofs for salary are served via authenticated routes.
 
 **Key Features:**
-- **Inventory Management**: Purchases auto-update stock and weighted average costs; waste auto-deducts from stock.
+- **Inventory Management**: Purchases auto-update stock and weighted average costs; waste auto-deducts from stock. Purchase/waste deletion properly reverses stock changes. Negative stock is prevented on inventory adjustments. Deletion of vendors, ingredients, categories, and menu items is guarded against referential usage.
 - **Trial Management**: Approved R&D trials can be converted into menu item recipes.
 - **Daily Sales Settlement**: Reconciliation of daily sales against payment collections with admin verification.
 - **Petty Cash Management**: Comprehensive ledger with running balance, negative balance protection, and auto-linking with expenses.

@@ -4,12 +4,14 @@ import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency,
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
+import { useToast } from '@/hooks/use-toast';
 
 const emptyForm = { name: '', categoryId: 0, stockUom: 'g', purchaseUom: 'kg', recipeUom: 'g', conversionFactor: 1000, currentCost: 0, reorderLevel: 0, active: true };
 
 export default function Ingredients() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { toast } = useToast();
   const isAdmin = user?.role === 'admin';
   const isViewer = user?.role === 'viewer';
   const { data: ingredients, isLoading } = useListIngredients();
@@ -38,17 +40,20 @@ export default function Ingredients() {
   };
 
   const handleSave = async () => {
+    if (!formData.name.trim()) { toast({ title: 'Ingredient name is required', variant: 'destructive' }); return; }
     try {
       const base = import.meta.env.BASE_URL || '/';
       const token = localStorage.getItem('token');
       if (editId) {
-        await fetch(`${base}api/ingredients/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
+        const res = await fetch(`${base}api/ingredients/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
+        if (!res.ok) throw new Error(await res.text());
       } else {
         await createMut.mutateAsync({ data: formData as any });
       }
       queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });
       setIsModalOpen(false);
-    } catch(e) { console.error(e); }
+      toast({ title: editId ? 'Ingredient updated' : 'Ingredient created' });
+    } catch(e: any) { toast({ title: 'Failed to save ingredient', description: e.message, variant: 'destructive' }); }
   };
 
   const handleDelete = async () => {
@@ -56,10 +61,12 @@ export default function Ingredients() {
     try {
       const base = import.meta.env.BASE_URL || '/';
       const token = localStorage.getItem('token');
-      await fetch(`${base}api/ingredients/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetch(`${base}api/ingredients/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) { const err = await res.json().catch(() => ({ error: 'Delete failed' })); throw new Error(err.error || 'Delete failed'); }
       queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] });
       setDeleteConfirm(null);
-    } catch(e) { console.error(e); }
+      toast({ title: 'Ingredient deleted' });
+    } catch(e: any) { toast({ title: 'Cannot delete ingredient', description: e.message, variant: 'destructive' }); }
   };
 
   const handleVerify = async (id: number) => { await apiVerify('ingredients', id); queryClient.invalidateQueries({ queryKey: ['/api/ingredients'] }); };

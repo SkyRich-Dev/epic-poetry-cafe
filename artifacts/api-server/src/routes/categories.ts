@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, categoriesTable } from "@workspace/db";
+import { db, categoriesTable, menuItemsTable, ingredientsTable } from "@workspace/db";
 import { ListCategoriesResponse, CreateCategoryBody, UpdateCategoryParams, UpdateCategoryBody, DeleteCategoryParams, ListCategoriesQueryParams } from "@workspace/api-zod";
 import { authMiddleware } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
@@ -51,8 +51,20 @@ router.patch("/categories/:id", authMiddleware, async (req, res): Promise<void> 
 router.delete("/categories/:id", authMiddleware, async (req, res): Promise<void> => {
   const params = DeleteCategoryParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  await db.delete(categoriesTable).where(eq(categoriesTable.id, params.data.id));
-  res.sendStatus(204);
+
+  const [usedInMenuItem] = await db.select({ id: menuItemsTable.id }).from(menuItemsTable).where(eq(menuItemsTable.categoryId, params.data.id)).limit(1);
+  if (usedInMenuItem) { res.status(400).json({ error: "Cannot delete: this category has menu items." }); return; }
+
+  const [usedInIngredient] = await db.select({ id: ingredientsTable.id }).from(ingredientsTable).where(eq(ingredientsTable.categoryId, params.data.id)).limit(1);
+  if (usedInIngredient) { res.status(400).json({ error: "Cannot delete: this category has ingredients." }); return; }
+
+  try {
+    await db.delete(categoriesTable).where(eq(categoriesTable.id, params.data.id));
+    res.sendStatus(204);
+  } catch (e: any) {
+    if (e.code === '23503') { res.status(400).json({ error: "Cannot delete: this category is referenced by other records." }); return; }
+    throw e;
+  }
 });
 
 export default router;

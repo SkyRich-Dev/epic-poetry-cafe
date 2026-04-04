@@ -4,6 +4,7 @@ import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, St
 import { Plus, CheckCircle, AlertTriangle, XCircle, Banknote, CreditCard, QrCode, Trash2, Eye, ShieldCheck, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
+import { useToast } from '@/hooks/use-toast';
 
 const PAYMENT_MODES = ['Cash', 'Card', 'QR', 'UPI', 'Bank Transfer', 'Swiggy', 'Zomato', 'Other'];
 
@@ -18,6 +19,7 @@ function StatusBadge({ type, status }: { type: string; status: string }) {
 export default function Settlements() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { toast } = useToast();
   const isViewer = user?.role === 'viewer';
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
@@ -76,7 +78,7 @@ export default function Settlements() {
       setIsModalOpen(false);
       setEditingId(null);
       resetForm();
-    } catch (e: any) { console.error(e); }
+    } catch (e: any) { toast({ title: 'Failed to save settlement', description: e.message, variant: 'destructive' }); }
   };
 
   const handleEdit = (s: any) => {
@@ -99,7 +101,7 @@ export default function Settlements() {
     try {
       await verifyMut.mutateAsync({ id });
       queryClient.invalidateQueries({ queryKey: ['/api/settlements'] });
-    } catch (e) { console.error(e); }
+    } catch (e: any) { toast({ title: 'Failed to verify settlement', description: e.message, variant: 'destructive' }); }
   };
 
   const handleDelete = async (id: number) => {
@@ -107,7 +109,7 @@ export default function Settlements() {
     try {
       await deleteMut.mutateAsync({ id });
       queryClient.invalidateQueries({ queryKey: ['/api/settlements'] });
-    } catch (e) { console.error(e); }
+    } catch (e: any) { toast({ title: 'Failed to delete settlement', description: e.message, variant: 'destructive' }); }
   };
 
   const resetForm = () => {

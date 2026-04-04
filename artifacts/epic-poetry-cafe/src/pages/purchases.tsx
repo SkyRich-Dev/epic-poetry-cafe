@@ -4,6 +4,7 @@ import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge,
 import { Plus, Receipt, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
+import { useToast } from '@/hooks/use-toast';
 
 export default function Purchases() {
   const queryClient = useQueryClient();
@@ -17,6 +18,7 @@ export default function Purchases() {
   const { data: vendors } = useListVendors();
   const { data: ingredients } = useListIngredients();
   
+  const { toast } = useToast();
   const createMut = useCreatePurchase();
   const [isModalOpen, setIsModalOpen] = useState(false);
   
@@ -53,15 +55,16 @@ export default function Purchases() {
   };
 
   const handleSave = async () => {
+    if (!formData.vendorId) { toast({ title: 'Please select a vendor', variant: 'destructive' }); return; }
+    const validLines = lines.filter(l => l.ingredientId > 0 && l.quantity > 0);
+    if (validLines.length === 0) { toast({ title: 'Add at least one item with quantity', variant: 'destructive' }); return; }
     try {
-      const payload = {
-        ...formData,
-        lines: lines.filter(l => l.ingredientId > 0 && l.quantity > 0)
-      };
+      const payload = { ...formData, lines: validLines };
       await createMut.mutateAsync({ data: payload as any });
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
       setIsModalOpen(false);
-    } catch (e) { console.error(e); }
+      toast({ title: 'Purchase recorded' });
+    } catch (e: any) { toast({ title: 'Failed to save purchase', description: e.message, variant: 'destructive' }); }
   };
 
   const handleVerify = async (id: number) => {

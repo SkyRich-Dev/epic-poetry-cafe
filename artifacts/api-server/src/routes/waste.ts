@@ -125,7 +125,16 @@ router.delete("/waste/:id", authMiddleware, async (req, res): Promise<void> => {
   const [existing] = await db.select().from(wasteEntriesTable).where(eq(wasteEntriesTable.id, params.data.id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
-  const [entry] = await db.delete(wasteEntriesTable).where(eq(wasteEntriesTable.id, params.data.id)).returning();
+
+  if (existing.wasteType === "ingredient" && existing.ingredientId) {
+    const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, existing.ingredientId));
+    if (ing) {
+      await db.update(ingredientsTable).set({ currentStock: ing.currentStock + existing.quantity }).where(eq(ingredientsTable.id, existing.ingredientId));
+    }
+  }
+
+  await db.delete(wasteEntriesTable).where(eq(wasteEntriesTable.id, params.data.id));
+  await createAuditLog("waste", params.data.id, "delete", existing, null);
   res.json({ success: true });
 });
 

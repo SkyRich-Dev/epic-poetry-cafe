@@ -4,6 +4,7 @@ import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, format
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
+import { useToast } from '@/hooks/use-toast';
 
 export default function Expenses() {
   const queryClient = useQueryClient();
@@ -14,6 +15,7 @@ export default function Expenses() {
   const [toDate, setToDate] = useState('');
   const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
   const { data: expenses, isLoading } = useListExpenses(Object.keys(dateParams).length ? dateParams : undefined);
+  const { toast } = useToast();
   const createMut = useCreateExpense();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -25,17 +27,21 @@ export default function Expenses() {
   const openEdit = (e: any) => { setEditId(e.id); setFormData({ expenseDate: e.expenseDate, amount: Number(e.amount), costType: e.costType || 'FIXED', description: e.description || '', paymentMode: e.paymentMode || 'CARD' }); setIsModalOpen(true); };
 
   const handleSave = async () => {
+    if (formData.amount <= 0) { toast({ title: 'Amount must be greater than 0', variant: 'destructive' }); return; }
+    if (!formData.description.trim()) { toast({ title: 'Description is required', variant: 'destructive' }); return; }
     try {
       const base = import.meta.env.BASE_URL || '/';
       const token = localStorage.getItem('token');
       if (editId) {
-        await fetch(`${base}api/expenses/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
+        const res = await fetch(`${base}api/expenses/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(formData) });
+        if (!res.ok) throw new Error(await res.text());
       } else {
         await createMut.mutateAsync({ data: formData as any });
       }
       queryClient.invalidateQueries({ queryKey: ['/api/expenses'] });
       setIsModalOpen(false);
-    } catch(e) { console.error(e); }
+      toast({ title: editId ? 'Expense updated' : 'Expense created' });
+    } catch(e: any) { toast({ title: 'Failed to save expense', description: e.message, variant: 'destructive' }); }
   };
 
   const handleDelete = async () => {
@@ -43,10 +49,12 @@ export default function Expenses() {
     try {
       const base = import.meta.env.BASE_URL || '/';
       const token = localStorage.getItem('token');
-      await fetch(`${base}api/expenses/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetch(`${base}api/expenses/${deleteConfirm.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) throw new Error(await res.text());
       queryClient.invalidateQueries({ queryKey: ['/api/expenses'] });
       setDeleteConfirm(null);
-    } catch(e) { console.error(e); }
+      toast({ title: 'Expense deleted' });
+    } catch(e: any) { toast({ title: 'Failed to delete expense', description: e.message, variant: 'destructive' }); }
   };
 
   const handleVerify = async (id: number) => { await apiVerify('expenses', id); queryClient.invalidateQueries({ queryKey: ['/api/expenses'] }); };
