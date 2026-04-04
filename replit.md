@@ -43,9 +43,9 @@ artifacts-monorepo/
 └── pnpm-workspace.yaml
 ```
 
-## Database Tables (14)
+## Database Tables (22+)
 
-users, categories, uom, system_config, vendors, ingredients, ingredient_vendor_mapping, menu_items, recipe_lines, purchases, purchase_lines, expenses, stock_snapshots, stock_adjustments, sales_entries, waste_entries, trials, trial_versions, trial_ingredient_lines, audit_logs
+users, categories, uom, system_config, vendors, ingredients, ingredient_vendor_mapping, menu_items, recipe_lines, purchases, purchase_lines, expenses, stock_snapshots, stock_adjustments, sales_entries, waste_entries, trials, trial_versions, trial_ingredient_lines, audit_logs, vendor_payments, vendor_payment_allocations, vendor_ledger, sales_invoices, sales_invoice_lines, sales_import_batches, petpooja_item_mappings
 
 ## API Routes
 
@@ -122,3 +122,7 @@ All routes under `/api` prefix. Global auth middleware requires Bearer token for
 - **Salary Payment Status**: Each salary record has `paymentStatus` (pending/paid), `paymentProofUrl`, `paidAt`, `paidBy`. Admin can toggle paid/pending status and upload payment proof (image/PDF, max 5MB). Proof files served via authenticated route (not public)
 - **Sales Fixed Pricing**: Sales entries always use the menu item's fixed `sellingPrice` — the price field is read-only in the UI and enforced server-side. Explicit `discount` field shown in form and table. Total = qty × menuPrice − discount
 - **Salary Proof Upload**: POST /salary/:id/upload-proof (multipart, admin-only), GET /uploads/salary-proofs/:filename (authenticated)
+- **Vendor Finance Tracking**: Bill-wise payment recording with allocations; vendor ledger (debit/credit/running balance); aging analytics (current, 1-7d, 8-15d, 16-30d, 30+d); payment proof upload; vendor detail page with tabs (Overview, Bills, Payments, Ledger, Analytics); bulk vendor summaries endpoint for fast list view
+- **Vendor Payments**: POST /vendor-payments (record payment with bill allocations), GET /vendor-payments, DELETE /vendor-payments/:id (admin), POST /vendor-payments/:id/upload-proof, GET /vendor-detail/:vendorId, GET /vendor-ledger/:vendorId, GET /vendor-summaries (bulk)
+- **Sales Invoice Module**: Invoice-based sales with line items, GST calculation (inclusive/exclusive), proportional discount allocation, match detection; item-level summary, daily summary, consumption projection; verify/unverify workflow
+- **Sales Invoices**: GET/POST /sales-invoices, PATCH/DELETE /sales-invoices/:id, PATCH /sales-invoices/:id/verify|unverify, GET /sales-invoices-item-summary, GET /sales-invoices-daily-summary, GET /sales-invoices-consumption

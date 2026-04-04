@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte } from "drizzle-orm";
-import { db, purchasesTable, purchaseLinesTable, vendorsTable, ingredientsTable } from "@workspace/db";
+import { db, purchasesTable, purchaseLinesTable, vendorsTable, ingredientsTable, vendorLedgerTable } from "@workspace/db";
 import { ListPurchasesResponse, CreatePurchaseBody, GetPurchaseParams, GetPurchaseResponse } from "@workspace/api-zod";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
@@ -25,6 +25,10 @@ router.get("/purchases", async (req, res): Promise<void> => {
       paymentMode: purchasesTable.paymentMode,
       paymentStatus: purchasesTable.paymentStatus,
       totalAmount: purchasesTable.totalAmount,
+      paidAmount: purchasesTable.paidAmount,
+      pendingAmount: purchasesTable.pendingAmount,
+      dueDate: purchasesTable.dueDate,
+      vendorInvoiceNumber: purchasesTable.vendorInvoiceNumber,
       notes: purchasesTable.notes,
       verified: purchasesTable.verified,
       verifiedBy: purchasesTable.verifiedBy,
@@ -34,8 +38,12 @@ router.get("/purchases", async (req, res): Promise<void> => {
     .from(purchasesTable)
     .leftJoin(vendorsTable, eq(purchasesTable.vendorId, vendorsTable.id));
 
-  const purchases = whereClause
-    ? await query.where(whereClause).orderBy(purchasesTable.createdAt)
+  if (req.query.vendorId) conditions.push(eq(purchasesTable.vendorId, Number(req.query.vendorId)));
+  if (req.query.paymentStatus) conditions.push(eq(purchasesTable.paymentStatus, req.query.paymentStatus as string));
+
+  const finalWhere = conditions.length > 0 ? and(...conditions) : undefined;
+  const purchases = finalWhere
+    ? await query.where(finalWhere).orderBy(purchasesTable.createdAt)
     : await query.orderBy(purchasesTable.createdAt);
   res.json(purchases);
 });
@@ -85,7 +93,35 @@ router.post("/purchases", authMiddleware, async (req, res): Promise<void> => {
     }
   }
 
-  await db.update(purchasesTable).set({ totalAmount }).where(eq(purchasesTable.id, purchase.id));
+  const paymentStatus = parsed.data.paymentStatus === "paid" ? "fully_paid" : "unpaid";
+  await db.update(purchasesTable).set({
+    totalAmount,
+    grossAmount: totalAmount,
+    pendingAmount: paymentStatus === "fully_paid" ? 0 : totalAmount,
+    paidAmount: paymentStatus === "fully_paid" ? totalAmount : 0,
+    paymentStatus,
+    vendorInvoiceNumber: parsed.data.invoiceNumber || undefined,
+    dueDate: parsed.data.dueDate || undefined,
+  }).where(eq(purchasesTable.id, purchase.id));
+
+  const lastLedger = await db.select().from(vendorLedgerTable)
+    .where(eq(vendorLedgerTable.vendorId, parsed.data.vendorId))
+    .orderBy(vendorLedgerTable.id)
+    .limit(1);
+  const prevBalance = lastLedger.length > 0 ? lastLedger[0].runningBalance : 0;
+
+  await db.insert(vendorLedgerTable).values({
+    vendorId: parsed.data.vendorId,
+    transactionDate: parsed.data.purchaseDate,
+    transactionType: "purchase",
+    referenceType: "purchase",
+    referenceId: purchase.id,
+    debit: totalAmount,
+    credit: 0,
+    runningBalance: prevBalance + totalAmount,
+    description: `Purchase ${purchaseNumber} - ${parsed.data.invoiceNumber || 'No invoice'}`,
+  });
+
   await createAuditLog("purchases", purchase.id, "create", null, { purchaseNumber, totalAmount });
 
   const [vendor] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, parsed.data.vendorId));

@@ -1,0 +1,73 @@
+import { pgTable, text, serial, boolean, integer, doublePrecision, timestamp } from "drizzle-orm/pg-core";
+import { menuItemsTable } from "./menuItems";
+
+export const salesInvoicesTable = pgTable("sales_invoices", {
+  id: serial("id").primaryKey(),
+  salesDate: text("sales_date").notNull(),
+  invoiceNo: text("invoice_no").notNull(),
+  invoiceTime: text("invoice_time"),
+  sourceType: text("source_type").notNull().default("manual"),
+  orderType: text("order_type").notNull().default("dine-in"),
+  customerName: text("customer_name"),
+  grossAmount: doublePrecision("gross_amount").notNull().default(0),
+  totalDiscount: doublePrecision("total_discount").notNull().default(0),
+  taxableAmount: doublePrecision("taxable_amount").notNull().default(0),
+  gstAmount: doublePrecision("gst_amount").notNull().default(0),
+  finalAmount: doublePrecision("final_amount").notNull().default(0),
+  paymentMode: text("payment_mode").notNull().default("cash"),
+  paymentReference: text("payment_reference"),
+  importBatchId: integer("import_batch_id"),
+  matchStatus: text("match_status").notNull().default("pending"),
+  matchDifference: doublePrecision("match_difference").notNull().default(0),
+  verified: boolean("verified").notNull().default(false),
+  verifiedBy: integer("verified_by"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  createdBy: integer("created_by"),
+  updatedBy: integer("updated_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const salesInvoiceLinesTable = pgTable("sales_invoice_lines", {
+  id: serial("id").primaryKey(),
+  invoiceId: integer("invoice_id").notNull().references(() => salesInvoicesTable.id, { onDelete: "cascade" }),
+  menuItemId: integer("menu_item_id").notNull().references(() => menuItemsTable.id),
+  itemCodeSnapshot: text("item_code_snapshot"),
+  itemNameSnapshot: text("item_name_snapshot"),
+  quantity: doublePrecision("quantity").notNull(),
+  fixedPrice: doublePrecision("fixed_price").notNull(),
+  grossLineAmount: doublePrecision("gross_line_amount").notNull().default(0),
+  lineDiscountAmount: doublePrecision("line_discount_amount").notNull().default(0),
+  discountedUnitPrice: doublePrecision("discounted_unit_price").notNull().default(0),
+  taxableLineAmount: doublePrecision("taxable_line_amount").notNull().default(0),
+  gstPercent: doublePrecision("gst_percent").notNull().default(0),
+  gstAmount: doublePrecision("gst_amount").notNull().default(0),
+  finalLineAmount: doublePrecision("final_line_amount").notNull().default(0),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const salesImportBatchesTable = pgTable("sales_import_batches", {
+  id: serial("id").primaryKey(),
+  sourceType: text("source_type").notNull(),
+  fileName: text("file_name"),
+  invoiceCount: integer("invoice_count").notNull().default(0),
+  lineCount: integer("line_count").notNull().default(0),
+  successCount: integer("success_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  matchedCount: integer("matched_count").notNull().default(0),
+  mismatchedCount: integer("mismatched_count").notNull().default(0),
+  validationReport: text("validation_report"),
+  uploadedBy: integer("uploaded_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const petpoojaItemMappingsTable = pgTable("petpooja_item_mappings", {
+  id: serial("id").primaryKey(),
+  petpoojaItemId: text("petpooja_item_id"),
+  petpoojaItemName: text("petpooja_item_name").notNull(),
+  menuItemId: integer("menu_item_id").references(() => menuItemsTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});

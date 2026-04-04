@@ -22,6 +22,8 @@ import settlementsRouter from "./settlements";
 import pettyCashRouter from "./pettyCash";
 import employeesRouter from "./employees";
 import backupRouter from "./backup";
+import vendorPaymentsRouter from "./vendorPayments";
+import salesInvoicesRouter from "./salesInvoices";
 
 const router: IRouter = Router();
 
@@ -48,5 +50,7 @@ router.use(settlementsRouter);
 router.use(pettyCashRouter);
 router.use(employeesRouter);
 router.use(backupRouter);
+router.use(vendorPaymentsRouter);
+router.use(salesInvoicesRouter);
 
 export default router;

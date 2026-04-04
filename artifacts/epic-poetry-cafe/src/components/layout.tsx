@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Coffee, Users, Package, ShoppingCart, 
   Receipt, FileText, Settings, LogOut, Menu, X, Trash2, 
   FlaskConical, ClipboardList, PackageSearch, Upload, BarChart3,
-  Banknote, Wallet, Store, UserCheck, CalendarDays, KeyRound
+  Banknote, Wallet, Store, UserCheck, CalendarDays, KeyRound, FileSpreadsheet
 } from 'lucide-react';
 import { cn, Modal, Button, Input, Label } from './ui-extras';
 
@@ -23,6 +23,7 @@ const navGroups: NavGroup[] = [
     title: 'Operations',
     items: [
       { name: 'Sales', path: '/sales', icon: Receipt },
+      { name: 'Sales Invoices', path: '/sales-invoices', icon: FileSpreadsheet },
       { name: 'Settlements', path: '/settlements', icon: Banknote },
       { name: 'Purchases', path: '/purchases', icon: ShoppingCart },
       { name: 'Expenses', path: '/expenses', icon: FileText },
