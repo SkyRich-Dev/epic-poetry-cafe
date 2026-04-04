@@ -67,6 +67,8 @@ export const petpoojaItemMappingsTable = pgTable("petpooja_item_mappings", {
   id: serial("id").primaryKey(),
   petpoojaItemId: text("petpooja_item_id"),
   petpoojaItemName: text("petpooja_item_name").notNull(),
+  petpoojaItemCode: text("petpooja_item_code"),
+  petpoojaCategoryName: text("petpooja_category_name"),
   menuItemId: integer("menu_item_id").references(() => menuItemsTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

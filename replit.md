@@ -45,7 +45,7 @@ The system is built as a monorepo utilizing `pnpm workspaces` for managing vario
 - **Daily P&L**: Real-time calculation of profit and loss.
 - **Consumption Variance**: Comparison of actual vs. theoretical ingredient usage.
 - **Bulk Data Import**: Excel upload for sales, purchases, expenses, and sales invoices with row-by-row validation and name-matching.
-- **POS Integration**: Specialized integration for Petpooja POS data import with automatic item mapping and a dedicated admin UI. Also supports general POS integrations (Petpooja, POSist, UrbanPiper, custom) with secure webhook handling.
+- **POS Integration**: Real-time Petpooja POS integration via webhook (`POST /api/webhook/petpooja/:integrationId`). Handles the official Petpooja Global API `orderdetails` event payload format — supports basic orders, discounts (order-level & item-level), add-ons, part payments (Cash+Card mixed), online aggregator orders (Zomato/Swiggy), tax allocation (CGST/SGST), and service/packaging/delivery charges. Auto-creates unmapped item entries in `petpooja_item_mappings` for admin mapping. Token-based webhook authentication via the `token` field in payload body. Also supports general POS integrations (POSist, UrbanPiper, custom) with secure webhook handling.
 - **Employee Management**: CRUD operations for employees, shifts, attendance tracking (present, half-day, absent, week-off), and leave management.
 - **Salary Generation**: Admin-only feature calculating net salary based on attendance and leaves, with payment status tracking and proof upload.
 - **Vendor Finance Tracking**: Bill-wise payment recording, ledger tracking (debit/credit/running balance), aging analysis, and payment proof uploads.

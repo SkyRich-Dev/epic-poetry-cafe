@@ -86,20 +86,25 @@ export default function PetpoojaMappingsPage() {
         <table className="w-full text-sm">
           <thead><tr className="border-b bg-muted/50">
             <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Petpooja Item</th>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Petpooja ID</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">ID / Code</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Category</th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Status</th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Map To</th>
             <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Actions</th>
           </tr></thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No mappings found. Import a Petpooja file to auto-register items.</td></tr>
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No mappings found. Petpooja orders will auto-register items here.</td></tr>
             ) : filtered.map(m => (
               <tr key={m.id} className="border-b hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-3 font-medium">{m.petpoojaItemName}</td>
-                <td className="px-4 py-3 text-muted-foreground text-xs">{m.petpoojaItemId || '-'}</td>
+                <td className="px-4 py-3 text-muted-foreground text-xs">
+                  <div>{m.petpoojaItemId || '-'}</div>
+                  {m.petpoojaItemCode && <div className="text-[10px] opacity-60">{m.petpoojaItemCode}</div>}
+                </td>
+                <td className="px-4 py-3 text-muted-foreground text-xs">{m.petpoojaCategoryName || '-'}</td>
                 <td className="px-4 py-3">
                   {m.menuItemId ? (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700"><Link2 size={11} /> {m.menuItemName}</span>
