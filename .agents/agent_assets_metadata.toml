@@ -1,0 +1,14 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "nro3DNhDE5e1Y8uvLVYuH"
+uri = "file://docs/SRS.md"
+type = "text"
+title = "Software Requirements Specification (SRS)"
+
+[[outputs]]
+id = "5ZJCHtYbDNZ5anhUKbKad"
+uri = "file://docs/DEVELOPER_GUIDE.md"
+type = "text"
+title = "Developer Guide"
