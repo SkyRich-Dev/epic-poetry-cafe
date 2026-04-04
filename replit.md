@@ -2,139 +2,63 @@
 
 ## Overview
 
-Comprehensive cafe operations management system with modules for vendors, ingredients, menu/recipes with costing engine, purchases, expenses, inventory/stock tracking, sales, waste management, trials/R&D, daily P&L analytics, dashboards, reports, and audit logs.
+The Epic Poetry Cafe Operations Management System is a comprehensive solution designed to streamline and manage all critical aspects of cafe operations. Its primary purpose is to enhance efficiency, reduce waste, and improve profitability by providing modules for vendor management, ingredient tracking, recipe costing, purchasing, expense management, inventory control, sales, waste management, R&D/trials, and robust financial analytics. The system aims to provide real-time insights into the cafe's performance, support informed decision-making, and automate tedious manual processes, ultimately contributing to a more sustainable and profitable business.
 
-## Stack
+## User Preferences
 
-- **Monorepo tool**: pnpm workspaces
-- **Node.js version**: 24
-- **Package manager**: pnpm
-- **TypeScript version**: 5.9
-- **Frontend**: React + Vite (artifacts/epic-poetry-cafe)
-- **API framework**: Express 5 (artifacts/api-server)
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
-- **Auth**: Custom JWT (HMAC-SHA256) with SESSION_SECRET env var
+I want you to act as a senior software engineer. I prefer detailed explanations and a collaborative approach. Before making any major changes or implementing new features, please discuss the approach and design choices with me. I appreciate clean, maintainable code with good test coverage. Do not make changes to files within the `lib/api-spec/` and `lib/api-client-react/` directories unless specifically instructed, as these are generated.
 
-## Structure
+## System Architecture
 
-```text
-artifacts-monorepo/
-├── artifacts/
-│   ├── api-server/         # Express API server (port from PORT env)
-│   │   └── src/
-│   │       ├── routes/     # All API route files (auth, users, categories, uom, config, vendors, ingredients, menuItems, purchases, expenses, inventory, sales, waste, trials, dashboard, reports, auditLogs)
-│   │       ├── lib/        # Auth (JWT), audit logging, code generator
-│   │       └── seed.ts     # Seeds admin user + categories + UOMs + config
-│   └── epic-poetry-cafe/   # React frontend (Vite)
-│       └── src/
-│           ├── pages/      # Login, Dashboard, Vendors, Ingredients, Menu, Purchases, Expenses, Sales, Inventory, Waste, Trials, Reports, AuditLogs, Masters
-│           ├── components/ # Layout (sidebar+topbar), UI extras
-│           └── lib/        # Auth context (JWT token in localStorage)
-├── lib/
-│   ├── api-spec/           # OpenAPI spec + Orval codegen config
-│   ├── api-client-react/   # Generated React Query hooks
-│   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
-│       └── src/schema/     # 14 schema files (users, categories, uom, config, vendors, ingredients, menuItems, purchases, expenses, inventory, sales, waste, trials, auditLogs)
-├── scripts/                # Utility scripts
-└── pnpm-workspace.yaml
-```
+The system is built as a monorepo utilizing `pnpm workspaces` for managing various components. It uses Node.js 24 and TypeScript 5.9.
 
-## Database Tables (22+)
+**Frontend:**
+- Developed with React and Vite, located in `artifacts/epic-poetry-cafe`.
+- Provides a comprehensive UI with pages for login, dashboard, various operational modules, reports, and administrative masters.
+- Implements an `AuthContext` for JWT token management in `localStorage`.
+- Features a role-based dashboard: "Owner's Dashboard" for admins with full P&L, settlements, vendor payables, and detailed trend charts (recharts); "Operations Dashboard" for managers/viewers focusing on daily operational metrics.
+- UI/UX includes a sidebar and topbar layout.
+- Access control is implemented at the route level, displaying "Access Restricted" for non-authorized users.
+- Date input fields enforce `max={today}` to prevent future date entries.
 
-users, categories, uom, system_config, vendors, ingredients, ingredient_vendor_mapping, menu_items, recipe_lines, purchases, purchase_lines, expenses, stock_snapshots, stock_adjustments, sales_entries, waste_entries, trials, trial_versions, trial_ingredient_lines, audit_logs, vendor_payments, vendor_payment_allocations, vendor_ledger, sales_invoices, sales_invoice_lines, sales_import_batches, petpooja_item_mappings, pos_integrations
+**Backend:**
+- An Express 5 API server, located in `artifacts/api-server`.
+- Uses PostgreSQL with Drizzle ORM for data persistence, defining over 22 tables.
+- Implements a custom JWT authentication scheme (HMAC-SHA256) with `SESSION_SECRET` and role-based access control (`admin`, `manager`, `viewer`).
+- All API routes are prefixed with `/api`. Global auth middleware protects most routes, with exceptions for `/api/healthz` and `/api/auth/login`.
+- `Orval` is used for API client code generation from an OpenAPI specification, generating React Query hooks (`lib/api-client-react/`) and Zod schemas (`lib/api-zod/`).
+- Validation is handled using `Zod`.
+- Uses `esbuild` for CJS bundle builds.
+- Critical operations in modules like sales, purchases, and expenses have an Admin Verification system (`verified`, `verifiedBy`, `verifiedAt` columns) with specific API endpoints for verification and unverification.
+- Implements a robust `Costing Engine` that supports weighted average (default), latest, or standard cost methods, accounting for UOM conversions.
+- Features auto-generation of unique codes for various entities (e.g., VND0001, ING0001).
+- Database transactions are used for atomicity in critical import processes (e.g., sales invoices, Petpooja data).
+- `PATCH` operations automatically use `.partial()` schemas for flexible updates.
+- Centralized date validation helper (`validateNotFutureDate`) on the backend.
+- Uploaded payment proofs for salary are served via authenticated routes.
 
-## API Routes
+**Key Features:**
+- **Inventory Management**: Purchases auto-update stock and weighted average costs; waste auto-deducts from stock.
+- **Trial Management**: Approved R&D trials can be converted into menu item recipes.
+- **Daily Sales Settlement**: Reconciliation of daily sales against payment collections with admin verification.
+- **Petty Cash Management**: Comprehensive ledger with running balance, negative balance protection, and auto-linking with expenses.
+- **Daily P&L**: Real-time calculation of profit and loss.
+- **Consumption Variance**: Comparison of actual vs. theoretical ingredient usage.
+- **Bulk Data Import**: Excel upload for sales, purchases, expenses, and sales invoices with row-by-row validation and name-matching.
+- **POS Integration**: Specialized integration for Petpooja POS data import with automatic item mapping and a dedicated admin UI. Also supports general POS integrations (Petpooja, POSist, UrbanPiper, custom) with secure webhook handling.
+- **Employee Management**: CRUD operations for employees, shifts, attendance tracking (present, half-day, absent, week-off), and leave management.
+- **Salary Generation**: Admin-only feature calculating net salary based on attendance and leaves, with payment status tracking and proof upload.
+- **Vendor Finance Tracking**: Bill-wise payment recording, ledger tracking (debit/credit/running balance), aging analysis, and payment proof uploads.
+- **Sales Invoice Module**: All sales flow through invoices (Petpooja POS or manual entry). Features line items, GST calculation, proportional discount allocation, match verification, and item/daily/consumption analytics. Quick Sales have been fully removed — all backend calculations (dashboard, P&L, reports, settlements, consumption variance) source from `sales_invoices` + `sales_invoice_lines`.
 
-All routes under `/api` prefix. Global auth middleware requires Bearer token for all routes except `/api/healthz` and `/api/auth/login`.
+## External Dependencies
 
-- **Auth**: POST /auth/login, GET /auth/me
-- **Users**: GET/POST /users, PATCH /users/:id
-- **Categories**: GET/POST /categories, PATCH/DELETE /categories/:id
-- **UOM**: GET/POST /uom, PATCH /uom/:id
-- **Config**: GET/PATCH /config
-- **Vendors**: GET/POST /vendors, GET/PATCH/DELETE /vendors/:id, GET /vendors/:id/spend-summary
-- **Ingredients**: GET/POST /ingredients, GET/PATCH/DELETE /ingredients/:id, GET/POST /ingredients/:id/vendor-mappings
-- **Menu Items**: GET/POST /menu-items, GET/PATCH/DELETE /menu-items/:id, GET/PUT /menu-items/:id/recipe, GET /menu-items/:id/costing
-- **Purchases**: GET/POST /purchases, GET /purchases/:id
-- **Expenses**: GET/POST /expenses, GET/PATCH/DELETE /expenses/:id (Petty Cash payment mode auto-creates linked petty cash ledger entry)
-- **Settlements**: GET/POST /settlements, GET/PATCH/DELETE /settlements/:id, POST /settlements/:id/verify, GET /settlements/sales-summary?date=
-- **Petty Cash**: GET/POST/PATCH /petty-cash, DELETE /petty-cash/:id, GET /petty-cash/summary
-- **Inventory**: GET /inventory/stock-overview, GET/POST /inventory/stock-snapshots, POST /inventory/adjustments
-- **Sales**: GET/POST /sales, PATCH/DELETE /sales/:id, GET /sales/daily-summary
-- **Waste**: GET/POST /waste, PATCH/DELETE /waste/:id, GET /waste/summary
-- **Trials**: GET/POST /trials, GET/PATCH/DELETE /trials/:id, POST /trials/:id/versions, POST /trials/:trialId/versions/:versionId/convert
-- **Upload**: POST /upload/sales, /upload/purchases, /upload/expenses, /upload/menu, /upload/sales-invoices, /upload/petpooja (multipart file), GET /upload/template/:type (xlsx template download, type=sales|purchases|expenses|menu|sales-invoices|petpooja)
-- **Petpooja Mappings**: GET /petpooja-mappings, PATCH /petpooja-mappings/:id (admin), DELETE /petpooja-mappings/:id (admin)
-- **POS Integrations**: GET/POST /pos-integrations (admin), GET/PATCH/DELETE /pos-integrations/:id (admin), POST /pos-integrations/:id/test-connection (admin), POST /pos-integrations/:id/regenerate-webhook-secret (admin), GET /pos-integrations/:id/webhook-secret (admin), GET /pos-integrations/:id/stats (admin)
-- **Webhook**: POST /webhook/petpooja/:integrationId (public, webhook-secret validated)
-- **Unified Sales**: GET /sales-unified (merges sales_entries + sales_invoices, date filtered)
-- **Reports (Analytics)**: GET /reports/item-profitability, /reports/item-wastage (params: period=daily|weekly|monthly|custom, fromDate, toDate)
-- **Dashboard**: GET /dashboard/summary, /profitability, /daily-pl, /consumption-variance, /sales-trend, /expense-breakdown, /vendor-spend, /trend (authenticated)
-- **Reports**: GET /reports/export?reportType=...
-- **Audit Logs**: GET /audit-logs
-
-## Auth
-
-- Custom JWT auth: POST /auth/login, GET /auth/me, POST /auth/change-password
-- Roles: `admin` (full access), `manager` (daily operations only), `viewer` (read-only)
-- Admin-only routes: config PATCH, users CRUD, audit-logs, upload, reports, trials
-- **User Management page**: Admin can create users, assign roles (Admin/Manager/Viewer), edit profiles, change passwords, activate/deactivate accounts
-- Manager can access: dashboard, sales, purchases, expenses, waste, menu, ingredients, inventory, vendors
-- Default users: admin / admin123 (admin role), manager / manager123 (manager role)
-- JWT stored in localStorage, sent as Authorization: Bearer header
-
-## Verification System
-
-- **Admin verification** on 6 modules: Ingredients, Menu Items, Sales, Purchases, Expenses, Waste
-- DB columns: `verified` (boolean, default false), `verifiedBy` (int, nullable), `verifiedAt` (timestamp, nullable)
-- API endpoints: `PATCH /:id/verify` and `PATCH /:id/unverify` (admin-only via `adminOnly` middleware)
-- Edit/delete guards: If `verified=true` AND `userRole !== "admin"` → 403 on PATCH/DELETE (including recipe updates for menu items)
-- Admin can always edit/delete regardless of verification status
-- Frontend: `VerifyButton` component in ui-extras.tsx; each table shows Verified column with toggle buttons for admin, read-only badges for non-admin
-- `apiVerify(module, id)` and `apiUnverify(module, id)` helper functions use `customFetch` directly (not generated hooks)
-
-## Key Features
-
-- **Costing Engine**: Weighted average (default), latest, or standard cost methods. Uses UOM conversion factor (stock-to-recipe) for accurate recipe line costing.
-- **Auto code generation**: VND0001, ING0001, MNU0001, PUR0001, EXP0001, WST0001, TRL0001
-- **Purchase -> Inventory**: Purchases auto-update ingredient stock + weighted avg cost
-- **Waste -> Stock**: Ingredient waste auto-deducts from stock
-- **Trial -> Menu**: Convert approved trial versions to menu item recipes
-- **Daily Sales Settlement**: Reconcile daily sales against payment collections (Cash, Card, QR, UPI, etc.); one settlement per date; auto-calculates difference (matched/short/excess); admin-only verification workflow
-- **Petty Cash Ledger**: Full petty cash management (receipts, expenses, adjustments); running balance tracking; negative balance protection; auto-linked when expenses use "Petty Cash" payment mode
-- **Expense-Petty Cash Link**: Creating expense with "Petty Cash" payment mode auto-creates petty cash ledger entry; deleting expense auto-removes linked petty cash entry; linked entries cannot be deleted directly from petty cash
-- **Daily P&L**: Real-time profit/loss calculation from sales, material cost, waste, expenses
-- **Consumption Variance**: Compare actual vs theoretical ingredient consumption (converted to stock UOM)
-- **Excel Upload**: Bulk import sales, purchases, expenses, sales-invoices from .xlsx/.xls files with row-by-row validation, auto name-matching (vendors, ingredients, menu items), and detailed import results
-- **Petpooja Import**: Import Petpooja POS data with automatic item mapping; unmapped items auto-registered; admin mapping UI at /petpooja-mappings
-- **Import Transactions**: Both sales-invoices and petpooja imports use DB transactions for atomicity
-- **Auth Token**: Frontend uses setAuthTokenGetter from custom-fetch for global API auth header injection
-- **PATCH operations**: All update schemas use .partial() for optional field updates
-- **Role-based Dashboard**: Admin sees "Owner's Dashboard" with full P&L, settlements, vendor payable/overdue, invoice stats (count, GST collected), insights, top items, and recharts-powered trend charts (Sales vs Expenses bar chart + Profit Trend line chart with 7D/14D/30D period selector). Manager/viewer sees "Operations Dashboard" with only: sales (with comparison badges), expenses, waste, petty cash balance, petty cash spent
-- **Password Change**: All users can change password from sidebar (key icon). Modal validates current password, min 6 chars, confirmation match
-- **Attendance Monthly Summary**: Monthly summary tab showing per-employee present/half-day/absent/week-off counts and attendance percentage
-- **Dashboard Date Filters**: Filter bar with Today/Date/Date Range/This Week/This Month modes. Week and month modes have prev/next navigation arrows. Labels dynamically adjust (e.g., "Today's Sales" → "Weekly Sales" → "Monthly Sales"). Backend accepts fromDate/toDate query params, falling back to single date for backward compat. Range mode compares vs previous equivalent period
-- **Menu Cost Visibility**: Production cost and margin columns on Menu Items page are hidden from non-admin users
-- **Route-level Access Control**: Admin-only pages (Trials, Analytics, Reports, Masters, Upload) show "Access Restricted" page for non-admin users, even if accessed via direct URL
-- **Employee Module**: Full employee management with auto-generated codes (EMP0001...), contact, position, salary, part-time/full-time. Admin-only CRUD; non-admin sees only name, code, position, type (no salary/contact)
-- **Shifts**: Define shifts with name, start/end time. Used in attendance marking
-- **Attendance**: Daily attendance with bulk save — statuses: present, half-day, absent, week-off. All users can mark attendance
-- **Leave Management**: Record paid/unpaid leaves per employee per date. Week-off = paid leave (no deduction). All users can record leaves
-- **Salary Generation**: Admin-only. Auto-computes net salary from base salary, attendance, leaves. Deductions for unpaid leaves, absences, and half-days (0.5× per-day rate). DB-level date filtering with LIKE on YYYY-MM prefix
-- **Salary Payment Status**: Each salary record has `paymentStatus` (pending/paid), `paymentProofUrl`, `paidAt`, `paidBy`. Admin can toggle paid/pending status and upload payment proof (image/PDF, max 5MB). Proof files served via authenticated route (not public)
-- **Sales Fixed Pricing**: Sales entries always use the menu item's fixed `sellingPrice` — the price field is read-only in the UI and enforced server-side. Explicit `discount` field shown in form and table. Total = qty × menuPrice − discount
-- **Salary Proof Upload**: POST /salary/:id/upload-proof (multipart, admin-only), GET /uploads/salary-proofs/:filename (authenticated)
-- **Vendor Finance Tracking**: Bill-wise payment recording with allocations; vendor ledger (debit/credit/running balance); aging analytics (current, 1-7d, 8-15d, 16-30d, 30+d); payment proof upload; vendor detail page with tabs (Overview, Bills, Payments, Ledger, Analytics); bulk vendor summaries endpoint for fast list view
-- **Vendor Payments**: POST /vendor-payments (record payment with bill allocations), GET /vendor-payments, DELETE /vendor-payments/:id (admin), POST /vendor-payments/:id/upload-proof, GET /vendor-detail/:vendorId, GET /vendor-ledger/:vendorId, GET /vendor-summaries (bulk)
-- **Sales Invoice Module**: Invoice-based sales with line items, GST calculation (inclusive/exclusive), proportional discount allocation, match detection; item-level summary, daily summary, consumption projection; verify/unverify workflow
-- **Sales Invoices**: GET/POST /sales-invoices, PATCH/DELETE /sales-invoices/:id, PATCH /sales-invoices/:id/verify|unverify, GET /sales-invoices-item-summary, GET /sales-invoices-daily-summary, GET /sales-invoices-consumption
-- **Sales Tab Interconnection**: Unified summary bar (Combined Sales, Quick Sales, Invoice Sales, GST Collected) visible across all 5 tabs; clickable summary cards switch tabs; daily summary rows drill down to invoices for that date; consumption tab includes estimated cost column (rate × qty from last purchase price) with total row
-- **Future Date Prevention**: System-wide enforcement — all date entry inputs have `max={today}` in frontend; backend `validateNotFutureDate()` helper rejects future dates on all POST/PATCH handlers for sales, purchases, expenses, waste, settlements, petty cash, vendor payments, sales invoices, attendance, leaves
-- **Date Validation Helper**: `artifacts/api-server/src/lib/dateValidation.ts` — `validateNotFutureDate(dateStr, fieldName)` returns error string or null; `isFutureDate(dateStr)` returns boolean
-- **POS Integrations Module**: Masters tab for managing POS integrations (Petpooja, POSist, UrbanPiper, custom). CRUD for integrations with API key management, webhook URL display, test connection, sync stats. Secrets redacted in audit logs. All endpoints admin-only. Webhook endpoints bypass auth but validate via X-Webhook-Secret header
-- **Unified Sales View**: "All Sales" tab in Sales page merges quick sales + invoices into single sortable table with type badges (Invoice/Quick), filter pills (All/Invoices/Quick), totals row. Backend GET /sales-unified returns combined records with summary stats
-- **Public Webhook Routes**: `/api/webhook/*` paths bypass JWT auth middleware (validated by integration-specific secret instead)
+- **Database**: PostgreSQL
+- **ORM**: Drizzle ORM
+- **API Framework**: Express 5
+- **Frontend Framework**: React
+- **Build Tool**: Vite, esbuild
+- **Package Manager**: pnpm
+- **Validation Library**: Zod (`zod/v4`), `drizzle-zod`
+- **API Code Generation**: Orval (from OpenAPI spec)
+- **POS Systems**: Petpooja, POSist, UrbanPiper (integrations are planned/supported)

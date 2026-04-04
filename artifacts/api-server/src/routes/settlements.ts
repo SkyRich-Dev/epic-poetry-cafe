@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
-import { db, dailySalesSettlementsTable, settlementLinesTable, salesEntriesTable } from "@workspace/db";
+import { db, dailySalesSettlementsTable, settlementLinesTable, salesInvoicesTable } from "@workspace/db";
 import { authMiddleware } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { validateNotFutureDate } from "../lib/dateValidation";
@@ -11,21 +11,21 @@ router.get("/settlements/sales-summary", authMiddleware, async (req, res): Promi
   const date = req.query.date as string;
   if (!date) { res.status(400).json({ error: "date required" }); return; }
 
-  const sales = await db.select({
-    totalAmount: salesEntriesTable.totalAmount,
-    discount: salesEntriesTable.discount,
-  }).from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, date));
-
-  const grossSales = sales.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
-  const totalDiscount = sales.reduce((sum, s) => sum + (s.discount || 0), 0);
-  const netSales = grossSales - totalDiscount;
+  const [result] = await db.select({
+    count: sql<number>`COUNT(*)`,
+    grossSales: sql<number>`COALESCE(SUM(gross_amount), 0)`,
+    totalDiscount: sql<number>`COALESCE(SUM(total_discount), 0)`,
+    gstAmount: sql<number>`COALESCE(SUM(gst_amount), 0)`,
+    netSales: sql<number>`COALESCE(SUM(final_amount), 0)`,
+  }).from(salesInvoicesTable).where(eq(salesInvoicesTable.salesDate, date));
 
   res.json({
     date,
-    grossSales,
-    totalDiscount,
-    netSales,
-    itemCount: sales.length,
+    grossSales: Number(result?.grossSales || 0),
+    totalDiscount: Number(result?.totalDiscount || 0),
+    gstAmount: Number(result?.gstAmount || 0),
+    netSales: Number(result?.netSales || 0),
+    itemCount: Number(result?.count || 0),
   });
 });
 
@@ -62,14 +62,15 @@ router.post("/settlements", authMiddleware, async (req, res): Promise<void> => {
     }
   }
 
-  const sales = await db.select({
-    totalAmount: salesEntriesTable.totalAmount,
-    discount: salesEntriesTable.discount,
-  }).from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, settlementDate));
+  const [invoiceTotals] = await db.select({
+    grossSales: sql<number>`COALESCE(SUM(gross_amount), 0)`,
+    totalDiscount: sql<number>`COALESCE(SUM(total_discount), 0)`,
+    netSales: sql<number>`COALESCE(SUM(final_amount), 0)`,
+  }).from(salesInvoicesTable).where(eq(salesInvoicesTable.salesDate, settlementDate));
 
-  const grossSalesAmount = sales.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
-  const discountAmount = sales.reduce((sum, s) => sum + (s.discount || 0), 0);
-  const netSalesAmount = grossSalesAmount - discountAmount;
+  const grossSalesAmount = Number(invoiceTotals?.grossSales || 0);
+  const discountAmount = Number(invoiceTotals?.totalDiscount || 0);
+  const netSalesAmount = Number(invoiceTotals?.netSales || 0);
 
   const totalSettlementAmount = lines.reduce((sum: number, l: any) => sum + (Number(l.amount) || 0), 0);
   const differenceAmount = netSalesAmount - totalSettlementAmount;
@@ -133,14 +134,15 @@ router.patch("/settlements/:id", authMiddleware, async (req, res): Promise<void>
   if (settlementDate) { const dateErr = validateNotFutureDate(settlementDate, "Settlement date"); if (dateErr) { res.status(400).json({ error: dateErr }); return; } }
   const date = settlementDate || old.settlementDate;
 
-  const sales = await db.select({
-    totalAmount: salesEntriesTable.totalAmount,
-    discount: salesEntriesTable.discount,
-  }).from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, date));
+  const [invoiceTotals2] = await db.select({
+    grossSales: sql<number>`COALESCE(SUM(gross_amount), 0)`,
+    totalDiscount: sql<number>`COALESCE(SUM(total_discount), 0)`,
+    netSales: sql<number>`COALESCE(SUM(final_amount), 0)`,
+  }).from(salesInvoicesTable).where(eq(salesInvoicesTable.salesDate, date));
 
-  const grossSalesAmount = sales.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
-  const discountAmount = sales.reduce((sum, s) => sum + (s.discount || 0), 0);
-  const netSalesAmount = grossSalesAmount - discountAmount;
+  const grossSalesAmount = Number(invoiceTotals2?.grossSales || 0);
+  const discountAmount = Number(invoiceTotals2?.totalDiscount || 0);
+  const netSalesAmount = Number(invoiceTotals2?.netSales || 0);
 
   let totalSettlementAmount = old.totalSettlementAmount;
   if (lines && Array.isArray(lines)) {

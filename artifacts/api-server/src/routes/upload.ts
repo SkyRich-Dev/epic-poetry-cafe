@@ -4,7 +4,8 @@ import * as XLSX from "xlsx";
 import { eq } from "drizzle-orm";
 import {
   db,
-  salesEntriesTable,
+  salesInvoicesTable,
+  salesInvoiceLinesTable,
   menuItemsTable,
   recipeLinesTable,
   categoriesTable,
@@ -140,8 +141,9 @@ router.post("/upload/sales", authMiddleware, handleUpload, async (req, res): Pro
       const quantity = toNum(raw.quantity || raw.qty);
       const sellingPrice = toNum(raw.price || raw.selling_price || raw.unit_price || raw.rate);
       const discount = toNum(raw.discount || 0);
-      const channel = String(raw.channel || "DINE_IN").toUpperCase().replace(/\s+/g, "_");
-      const notes = String(raw.notes || raw.remarks || "");
+      const orderType = String(raw.order_type || raw.channel || "dine-in").toLowerCase().replace(/_/g, "-");
+      const paymentMode = String(raw.payment_mode || raw.payment || "cash").toLowerCase();
+      const gstPercent = toNum(raw.gst_percent || raw.gst || 5);
 
       let menuItem = itemId ? menuById.get(itemId) : undefined;
       if (!menuItem && itemName) {
@@ -151,22 +153,45 @@ router.post("/upload/sales", authMiddleware, handleUpload, async (req, res): Pro
       if (quantity <= 0) { results.push({ row: i + 2, status: "error", error: "Quantity must be > 0" }); continue; }
 
       const price = sellingPrice > 0 ? sellingPrice : menuItem.sellingPrice;
-      const totalAmount = quantity * price - discount;
+      const grossAmount = quantity * price;
+      const taxableAmount = grossAmount - discount;
+      const gstAmount = Math.round(taxableAmount * gstPercent / 100 * 100) / 100;
+      const finalAmount = taxableAmount + gstAmount;
 
-      const [entry] = await db.insert(salesEntriesTable).values({
+      const invoiceNo = `XL-${Date.now().toString(36).toUpperCase()}-${i}`;
+
+      const [invoice] = await db.insert(salesInvoicesTable).values({
+        invoiceNo,
         salesDate,
-        menuItemId: menuItem.id,
-        quantity,
-        sellingPrice: price,
-        totalAmount,
-        discount,
-        channel,
-        notes: notes || undefined,
+        orderType,
+        customerName: "",
+        grossAmount,
+        totalDiscount: discount,
+        taxableAmount,
+        gstAmount,
+        finalAmount,
+        paymentMode,
+        sourceType: "excel",
+        matchStatus: "matched",
+        matchDifference: 0,
       }).returning();
 
-      await createAuditLog("sales", entry.id, "create", null, entry);
+      await db.insert(salesInvoiceLinesTable).values({
+        invoiceId: invoice.id,
+        menuItemId: menuItem.id,
+        itemNameSnapshot: menuItem.name,
+        quantity,
+        fixedPrice: price,
+        grossLineAmount: grossAmount,
+        lineDiscountAmount: discount,
+        gstPercent,
+        gstAmount,
+        finalLineAmount: finalAmount,
+      });
+
+      await createAuditLog("sales_invoice", invoice.id, "create", null, invoice);
       successCount++;
-      results.push({ row: i + 2, status: "success", data: { id: entry.id, item: menuItem.name, quantity, total: totalAmount } });
+      results.push({ row: i + 2, status: "success", data: { id: invoice.id, invoiceNo, item: menuItem.name, quantity, total: finalAmount } });
     } catch (e: any) {
       logger.error({ err: e, row: i + 2 }, "Sales upload row error");
       results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useListSales, useCreateSalesEntry, useListMenuItems } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
-import { Plus, Pencil, Trash2, Eye, FileText, BarChart3, Package, CheckCircle2, AlertTriangle, X, ShoppingBag, TrendingUp, IndianRupee, ArrowRight, ListChecks } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useListMenuItems } from '@workspace/api-client-react';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton } from '../components/ui-extras';
+import { Plus, Trash2, Eye, FileText, BarChart3, Package, CheckCircle2, AlertTriangle, X, TrendingUp, IndianRupee, ArrowRight } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,25 +19,15 @@ const ORDER_TYPES = ['dine-in', 'takeaway', 'delivery', 'online'];
 const PAYMENT_MODES = ['cash', 'card', 'upi', 'wallet', 'mixed'];
 
 export default function Sales() {
-  const queryClient = useQueryClient();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const isViewer = user?.role === 'viewer';
   const { toast } = useToast();
   const { data: menuItems } = useListMenuItems({ active: true });
 
-  const [tab, setTab] = useState<'unified' | 'quick' | 'invoices' | 'items' | 'daily' | 'consumption'>('unified');
+  const [tab, setTab] = useState<'invoices' | 'items' | 'daily' | 'consumption'>('invoices');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-
-  const quickParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
-  const { data: sales, isLoading: salesLoading } = useListSales(Object.keys(quickParams).length ? quickParams : undefined);
-  const createMut = useCreateSalesEntry();
-
-  const [quickModal, setQuickModal] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
-  const [quickForm, setQuickForm] = useState({ salesDate: new Date().toISOString().split('T')[0], menuItemId: 0, quantity: 1, discount: 0, channel: 'DINE_IN' });
-  const [deleteConfirmQuick, setDeleteConfirmQuick] = useState<{ id: number; name: string } | null>(null);
 
   const [invoices, setInvoices] = useState<any[]>([]);
   const [itemSummary, setItemSummary] = useState<any[]>([]);
@@ -82,60 +71,16 @@ export default function Sales() {
     try { const data = await apiFetch(`sales-invoices-consumption?${buildParams()}`); setConsumption(data); } catch {}
   }, [fromDate, toDate]);
 
-  const [unified, setUnified] = useState<any[]>([]);
-  const [unifiedSummary, setUnifiedSummary] = useState<any>(null);
-  const [unifiedLoading, setUnifiedLoading] = useState(false);
-  const [unifiedFilter, setUnifiedFilter] = useState<'all' | 'invoice' | 'quick'>('all');
-
-  const loadUnified = useCallback(async () => {
-    setUnifiedLoading(true);
-    try {
-      const data = await apiFetch(`sales-unified?${buildParams()}`);
-      setUnified(data.records || []);
-      setUnifiedSummary(data.summary || null);
-    } catch {} finally { setUnifiedLoading(false); }
-  }, [fromDate, toDate]);
-
   useEffect(() => {
-    if (tab === 'unified') loadUnified();
-    else if (tab === 'invoices') loadInvoices();
+    if (tab === 'invoices') loadInvoices();
     else if (tab === 'items') loadItemSummary();
     else if (tab === 'daily') loadDailySummary();
     else if (tab === 'consumption') loadConsumption();
   }, [tab, fromDate, toDate]);
 
-  const currentMenuPrice = getMenuPrice(quickForm.menuItemId);
-  const entryTotal = quickForm.quantity * currentMenuPrice - quickForm.discount;
-
-  const openQuickCreate = () => { setEditId(null); setQuickForm({ salesDate: new Date().toISOString().split('T')[0], menuItemId: 0, quantity: 1, discount: 0, channel: 'DINE_IN' }); setQuickModal(true); };
-  const openQuickEdit = (s: any) => { setEditId(s.id); setQuickForm({ salesDate: s.salesDate, menuItemId: s.menuItemId, quantity: Number(s.quantity), discount: Number(s.discount || 0), channel: s.channel }); setQuickModal(true); };
-
-  const handleQuickSave = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const payload = { salesDate: quickForm.salesDate, menuItemId: quickForm.menuItemId, quantity: quickForm.quantity, sellingPrice: currentMenuPrice, discount: quickForm.discount, channel: quickForm.channel };
-      if (editId) {
-        await fetch(`${BASE}api/sales/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
-      } else {
-        await createMut.mutateAsync({ data: payload as any });
-      }
-      queryClient.invalidateQueries({ queryKey: ['/api/sales'] });
-      setQuickModal(false);
-    } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
-  };
-
-  const handleQuickDelete = async () => {
-    if (!deleteConfirmQuick) return;
-    try {
-      const token = localStorage.getItem('token');
-      await fetch(`${BASE}api/sales/${deleteConfirmQuick.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-      queryClient.invalidateQueries({ queryKey: ['/api/sales'] });
-      setDeleteConfirmQuick(null);
-    } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
-  };
-
-  const handleVerifyQuick = async (id: number) => { await apiVerify('sales', id); queryClient.invalidateQueries({ queryKey: ['/api/sales'] }); };
-  const handleUnverifyQuick = async (id: number) => { await apiUnverify('sales', id); queryClient.invalidateQueries({ queryKey: ['/api/sales'] }); };
+  useEffect(() => {
+    loadInvoices();
+  }, [fromDate, toDate]);
 
   const openInvoiceCreate = () => {
     setInvoiceForm({
@@ -192,34 +137,13 @@ export default function Sales() {
     gst: acc.gst + inv.gstAmount, final: acc.final + inv.finalAmount, mismatched: acc.mismatched + (inv.matchStatus === 'mismatched' ? 1 : 0),
   }), { count: 0, gross: 0, discount: 0, gst: 0, final: 0, mismatched: 0 }), [invoices]);
 
-  const quickStats = useMemo(() => {
-    if (!sales?.length) return { count: 0, total: 0, discount: 0 };
-    return sales.reduce((acc: any, s: any) => ({
-      count: acc.count + 1, total: acc.total + Number(s.totalAmount), discount: acc.discount + Number(s.discount || 0),
-    }), { count: 0, total: 0, discount: 0 });
-  }, [sales]);
-
-  const combinedTotal = quickStats.total + invStats.final;
-  const combinedCount = quickStats.count + invStats.count;
-
-  useEffect(() => {
-    loadInvoices();
-  }, [fromDate, toDate]);
-
   const drillToDate = (date: string) => {
     setFromDate(date);
     setToDate(date);
     setTab('invoices');
   };
 
-  const filteredUnified = useMemo(() => {
-    if (unifiedFilter === 'all') return unified;
-    return unified.filter(r => r.type === unifiedFilter);
-  }, [unified, unifiedFilter]);
-
   const tabs = [
-    { key: 'unified' as const, label: 'All Sales', icon: ListChecks },
-    { key: 'quick' as const, label: 'Quick Sales', icon: ShoppingBag },
     { key: 'invoices' as const, label: 'Invoices', icon: FileText },
     { key: 'items' as const, label: 'Item Summary', icon: Package },
     { key: 'daily' as const, label: 'Daily Summary', icon: BarChart3 },
@@ -228,31 +152,30 @@ export default function Sales() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Sales" description="Quick sales entries, invoices with GST, item analytics, and consumption tracking">
-        {!isViewer && tab === 'quick' && <Button onClick={openQuickCreate}><Plus size={18}/> Log Sales</Button>}
+      <PageHeader title="Sales" description="Sales invoices with GST, item analytics, and consumption tracking">
         {!isViewer && tab === 'invoices' && <Button onClick={openInvoiceCreate}><Plus size={18}/> New Invoice</Button>}
       </PageHeader>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-card rounded-xl border p-4">
-          <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><TrendingUp size={12} /> Combined Sales</p>
-          <p className="text-2xl font-bold font-numbers text-emerald-600">{formatCurrency(combinedTotal)}</p>
-          <p className="text-xs text-muted-foreground mt-1">{combinedCount} entries total</p>
-        </div>
-        <div className="bg-card rounded-xl border p-4 cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setTab('quick')}>
-          <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><ShoppingBag size={12} /> Quick Sales</p>
-          <p className="text-xl font-bold font-numbers">{formatCurrency(quickStats.total)}</p>
-          <p className="text-xs text-muted-foreground mt-1">{quickStats.count} entries{quickStats.discount > 0 ? ` · ${formatCurrency(quickStats.discount)} disc` : ''}</p>
-        </div>
         <div className="bg-card rounded-xl border p-4 cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setTab('invoices')}>
-          <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><FileText size={12} /> Invoice Sales</p>
-          <p className="text-xl font-bold font-numbers">{formatCurrency(invStats.final)}</p>
-          <p className="text-xs text-muted-foreground mt-1">{invStats.count} invoices{invStats.mismatched > 0 ? <span className="text-red-500 ml-1">· {invStats.mismatched} mismatched</span> : ''}</p>
+          <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><TrendingUp size={12} /> Total Sales</p>
+          <p className="text-2xl font-bold font-numbers text-emerald-600">{formatCurrency(invStats.final)}</p>
+          <p className="text-xs text-muted-foreground mt-1">{invStats.count} invoices</p>
+        </div>
+        <div className="bg-card rounded-xl border p-4">
+          <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><FileText size={12} /> Gross Sales</p>
+          <p className="text-xl font-bold font-numbers">{formatCurrency(invStats.gross)}</p>
+          <p className="text-xs text-muted-foreground mt-1">Before discounts & GST</p>
         </div>
         <div className="bg-card rounded-xl border p-4">
           <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><IndianRupee size={12} /> GST Collected</p>
           <p className="text-xl font-bold font-numbers text-blue-600">{formatCurrency(invStats.gst)}</p>
-          <p className="text-xs text-muted-foreground mt-1">Discount: {formatCurrency(invStats.discount + quickStats.discount)}</p>
+          <p className="text-xs text-muted-foreground mt-1">Discount: {formatCurrency(invStats.discount)}</p>
+        </div>
+        <div className="bg-card rounded-xl border p-4">
+          <p className="text-xs text-muted-foreground uppercase flex items-center gap-1"><AlertTriangle size={12} /> Mismatches</p>
+          <p className="text-xl font-bold font-numbers text-red-600">{invStats.mismatched}</p>
+          <p className="text-xs text-muted-foreground mt-1">{invStats.mismatched > 0 ? 'Needs attention' : 'All matched'}</p>
         </div>
       </div>
 
@@ -266,126 +189,6 @@ export default function Sales() {
         </div>
         <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
       </div>
-
-      {tab === 'unified' && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Filter:</span>
-            {(['all', 'invoice', 'quick'] as const).map(f => (
-              <button key={f} onClick={() => setUnifiedFilter(f)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${unifiedFilter === f ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
-                {f === 'all' ? `All (${unified.length})` : f === 'invoice' ? `Invoices (${unifiedSummary?.invoiceCount || 0})` : `Quick (${unifiedSummary?.quickCount || 0})`}
-              </button>
-            ))}
-          </div>
-          <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Source</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Invoice / Items</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Type</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Qty</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Gross</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Disc</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">GST</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Final</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
-              </tr></thead>
-              <tbody>
-                {unifiedLoading ? (
-                  <tr><td colSpan={10} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
-                ) : filteredUnified.length === 0 ? (
-                  <tr><td colSpan={10} className="px-6 py-8 text-center text-muted-foreground">No sales records found</td></tr>
-                ) : filteredUnified.map(r => (
-                  <tr key={r.id} className="border-b hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3 text-muted-foreground">{formatDate(r.date)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${r.type === 'invoice' ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700'}`}>
-                        {r.type === 'invoice' ? <FileText size={10} /> : <ShoppingBag size={10} />}
-                        {r.type === 'invoice' ? 'Invoice' : 'Quick'}
-                      </span>
-                      {r.source !== 'manual' && <div className="text-xs text-muted-foreground capitalize mt-0.5">{r.source}</div>}
-                    </td>
-                    <td className="px-4 py-3">
-                      {r.invoiceNo && <div className="font-medium text-xs">{r.invoiceNo}</div>}
-                      <div className="text-xs text-muted-foreground truncate max-w-[200px]" title={r.items}>{r.items || '-'}</div>
-                      {r.customerName && <div className="text-xs text-muted-foreground">{r.customerName}</div>}
-                    </td>
-                    <td className="px-4 py-3 text-xs capitalize">{r.orderType}</td>
-                    <td className="px-4 py-3 text-right font-numbers">{r.totalQty}</td>
-                    <td className="px-4 py-3 text-right font-numbers">{formatCurrency(r.grossAmount)}</td>
-                    <td className="px-4 py-3 text-right font-numbers text-orange-600">{r.discount > 0 ? formatCurrency(r.discount) : '-'}</td>
-                    <td className="px-4 py-3 text-right font-numbers text-blue-600">{r.gstAmount > 0 ? formatCurrency(r.gstAmount) : '-'}</td>
-                    <td className="px-4 py-3 text-right font-numbers font-semibold text-emerald-600">{formatCurrency(r.finalAmount)}</td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex flex-col items-center gap-0.5">
-                        {r.verified ? <CheckCircle2 size={14} className="text-emerald-500" /> : <span className="text-xs text-muted-foreground">-</span>}
-                        {r.matchStatus && r.matchStatus !== 'matched' && <span className="text-xs text-red-500">mismatch</span>}
-                        {r.paymentMode && <span className="text-xs text-muted-foreground capitalize">{r.paymentMode}</span>}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filteredUnified.length > 0 && (
-                  <tr className="border-t-2 bg-muted/30 font-semibold">
-                    <td colSpan={5} className="px-4 py-3 text-right">Totals ({filteredUnified.length} records)</td>
-                    <td className="px-4 py-3 text-right font-numbers">{formatCurrency(filteredUnified.reduce((s, r) => s + r.grossAmount, 0))}</td>
-                    <td className="px-4 py-3 text-right font-numbers text-orange-600">{formatCurrency(filteredUnified.reduce((s, r) => s + r.discount, 0))}</td>
-                    <td className="px-4 py-3 text-right font-numbers text-blue-600">{formatCurrency(filteredUnified.reduce((s, r) => s + r.gstAmount, 0))}</td>
-                    <td className="px-4 py-3 text-right font-numbers text-emerald-600">{formatCurrency(filteredUnified.reduce((s, r) => s + r.finalAmount, 0))}</td>
-                    <td></td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {tab === 'quick' && (
-        <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Item</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Channel</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Qty</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Menu Price</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Discount</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Total</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Verified</th>
-              {!isViewer && <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Actions</th>}
-            </tr></thead>
-            <tbody>
-              {salesLoading ? (
-                <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
-              ) : !sales?.length ? (
-                <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">No quick sales recorded.</td></tr>
-              ) : sales.map((s: any) => (
-                <tr key={s.id} className="border-b hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3 text-muted-foreground">{formatDate(s.salesDate)}</td>
-                  <td className="px-4 py-3 font-medium text-foreground">{s.menuItemName}</td>
-                  <td className="px-4 py-3">{s.channel.replace('_', ' ')}</td>
-                  <td className="px-4 py-3 text-right font-numbers">{Number(s.quantity).toFixed(2)}</td>
-                  <td className="px-4 py-3 text-right font-numbers">{formatCurrency(s.sellingPrice)}</td>
-                  <td className="px-4 py-3 text-right font-numbers text-orange-600">{Number(s.discount) > 0 ? formatCurrency(s.discount) : '-'}</td>
-                  <td className="px-4 py-3 text-right font-numbers font-semibold text-emerald-600">{formatCurrency(s.totalAmount)}</td>
-                  <td className="px-4 py-3 text-center"><VerifyButton verified={!!s.verified} isAdmin={isAdmin} onVerify={() => handleVerifyQuick(s.id)} onUnverify={() => handleUnverifyQuick(s.id)} /></td>
-                  {!isViewer && (
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1">
-                        <button onClick={() => openQuickEdit(s)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Pencil size={14}/></button>
-                        {isAdmin && <button onClick={() => setDeleteConfirmQuick({ id: s.id, name: s.menuItemName })} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors" title="Delete"><Trash2 size={14}/></button>}
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
 
       {tab === 'invoices' && (
         <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
@@ -537,26 +340,6 @@ export default function Sales() {
         </div>
       )}
 
-      <Modal isOpen={quickModal} onClose={() => setQuickModal(false)} title={editId ? "Edit Sales Entry" : "Log Sales Entry"}
-        footer={<><Button variant="ghost" onClick={() => setQuickModal(false)}>Cancel</Button><Button onClick={handleQuickSave} disabled={createMut.isPending || !quickForm.menuItemId}>{editId ? 'Update' : 'Save Entry'}</Button></>}>
-        <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-4">
-            <div><Label>Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={quickForm.salesDate} onChange={(e:any) => setQuickForm({...quickForm, salesDate: e.target.value})} /></div>
-            <div><Label>Sales Channel</Label><Select value={quickForm.channel} onChange={(e:any) => setQuickForm({...quickForm, channel: e.target.value})}><option value="DINE_IN">Dine In</option><option value="TAKEAWAY">Takeaway</option><option value="DELIVERY">Delivery</option></Select></div>
-          </div>
-          <div><Label>Menu Item</Label><Select value={quickForm.menuItemId} onChange={(e:any) => setQuickForm({...quickForm, menuItemId: Number(e.target.value)})}><option value={0}>Select Item...</option>{menuItems?.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</Select></div>
-          <div className="grid grid-cols-3 gap-4">
-            <div><Label>Quantity Sold</Label><Input type="number" value={quickForm.quantity} onChange={(e:any) => setQuickForm({...quickForm, quantity: Number(e.target.value)})} /></div>
-            <div><Label>Menu Price</Label><Input type="number" value={currentMenuPrice} readOnly disabled className="bg-muted cursor-not-allowed" /></div>
-            <div><Label>Discount</Label><Input type="number" step="0.01" min="0" value={quickForm.discount} onChange={(e:any) => setQuickForm({...quickForm, discount: Number(e.target.value)})} /></div>
-          </div>
-          <div className="p-4 mt-4 bg-primary/10 rounded-xl border border-primary/20 flex justify-between items-center">
-            <span className="font-semibold text-primary">Entry Total:</span>
-            <span className="text-xl font-display font-bold text-primary">{formatCurrency(entryTotal)}</span>
-          </div>
-        </div>
-      </Modal>
-
       <Modal isOpen={invoiceModal} onClose={() => setInvoiceModal(false)} title="New Sales Invoice"
         footer={<><Button variant="ghost" onClick={() => setInvoiceModal(false)}>Cancel</Button><Button onClick={handleInvoiceCreate}>Create Invoice</Button></>}>
         <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
@@ -668,11 +451,6 @@ export default function Sales() {
           </div>
         </Modal>
       )}
-
-      <Modal isOpen={!!deleteConfirmQuick} onClose={() => setDeleteConfirmQuick(null)} title="Delete Sales Entry"
-        footer={<><Button variant="ghost" onClick={() => setDeleteConfirmQuick(null)}>Cancel</Button><Button variant="danger" onClick={handleQuickDelete}>Delete</Button></>}>
-        <p className="py-2 text-sm text-muted-foreground">Are you sure you want to delete the sales entry for <span className="font-semibold text-foreground">{deleteConfirmQuick?.name}</span>?</p>
-      </Modal>
 
       <Modal isOpen={!!deleteConfirmInv} onClose={() => setDeleteConfirmInv(null)} title="Delete Invoice"
         footer={<><Button variant="ghost" onClick={() => setDeleteConfirmInv(null)}>Cancel</Button><Button variant="danger" onClick={handleInvDelete}>Delete</Button></>}>

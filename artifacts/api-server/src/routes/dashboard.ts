@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, and, gte, lte, sql, gt } from "drizzle-orm";
-import { db, salesEntriesTable, expensesTable, wasteEntriesTable, ingredientsTable, menuItemsTable, recipeLinesTable, stockSnapshotsTable, dailySalesSettlementsTable, pettyCashLedgerTable, purchasesTable, vendorPaymentsTable, salesInvoicesTable } from "@workspace/db";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { db, expensesTable, wasteEntriesTable, ingredientsTable, menuItemsTable, recipeLinesTable, stockSnapshotsTable, dailySalesSettlementsTable, pettyCashLedgerTable, purchasesTable, salesInvoicesTable, salesInvoiceLinesTable } from "@workspace/db";
 import { authMiddleware } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -13,17 +13,49 @@ function getMonthStart(date: string): string {
   return date.substring(0, 7) + "-01";
 }
 
+async function getInvoiceSalesTotal(from: string, to: string): Promise<number> {
+  const [result] = await db.select({
+    total: sql<number>`COALESCE(SUM(final_amount), 0)`,
+  }).from(salesInvoicesTable).where(and(gte(salesInvoicesTable.salesDate, from), lte(salesInvoicesTable.salesDate, to)));
+  return Number(result?.total || 0);
+}
+
+async function getItemRevenueFromInvoices(from: string, to: string) {
+  const invoices = await db.select({ id: salesInvoicesTable.id })
+    .from(salesInvoicesTable)
+    .where(and(gte(salesInvoicesTable.salesDate, from), lte(salesInvoicesTable.salesDate, to)));
+  if (invoices.length === 0) return new Map<number, { menuItemId: number; menuItemName: string; quantity: number; revenue: number }>();
+
+  const invoiceIds = invoices.map(i => i.id);
+  const lines = await db.select({
+    menuItemId: salesInvoiceLinesTable.menuItemId,
+    quantity: salesInvoiceLinesTable.quantity,
+    finalLineAmount: salesInvoiceLinesTable.finalLineAmount,
+  }).from(salesInvoiceLinesTable)
+    .where(sql`${salesInvoiceLinesTable.invoiceId} IN (${sql.join(invoiceIds.map(id => sql`${id}`), sql`, `)})`);
+
+  const itemMap = new Map<number, { menuItemId: number; menuItemName: string; quantity: number; revenue: number }>();
+  for (const l of lines) {
+    if (!l.menuItemId) continue;
+    const existing = itemMap.get(l.menuItemId) || { menuItemId: l.menuItemId, menuItemName: "", quantity: 0, revenue: 0 };
+    existing.quantity += l.quantity;
+    existing.revenue += l.finalLineAmount;
+    itemMap.set(l.menuItemId, existing);
+  }
+  return itemMap;
+}
+
 router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || (req.query.date as string) || getToday();
   const toDate = (req.query.toDate as string) || (req.query.date as string) || getToday();
   const isSingleDay = fromDate === toDate;
   const monthStart = getMonthStart(toDate);
 
-  const rangeSales = await db.select().from(salesEntriesTable).where(and(gte(salesEntriesTable.salesDate, fromDate), lte(salesEntriesTable.salesDate, toDate)));
+  const todaySalesTotal = await getInvoiceSalesTotal(fromDate, toDate);
   const rangeExpenses = await db.select().from(expensesTable).where(and(gte(expensesTable.expenseDate, fromDate), lte(expensesTable.expenseDate, toDate)));
   const rangeWaste = await db.select().from(wasteEntriesTable).where(and(gte(wasteEntriesTable.wasteDate, fromDate), lte(wasteEntriesTable.wasteDate, toDate)));
 
-  const mtdSales = await db.select().from(salesEntriesTable).where(and(gte(salesEntriesTable.salesDate, monthStart), lte(salesEntriesTable.salesDate, toDate)));
+  const mtdSalesTotal = await getInvoiceSalesTotal(monthStart, toDate);
   const mtdExpenses = await db.select().from(expensesTable).where(and(gte(expensesTable.expenseDate, monthStart), lte(expensesTable.expenseDate, toDate)));
   const mtdWaste = await db.select().from(wasteEntriesTable).where(and(gte(wasteEntriesTable.wasteDate, monthStart), lte(wasteEntriesTable.wasteDate, toDate)));
 
@@ -45,22 +77,17 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
   let yesterdaySalesTotal = 0;
   let lastWeekSameDaySalesTotal = 0;
   if (isSingleDay) {
-    const yesterdaySales = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, yesterdayStr));
-    const lastWeekSales = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, lastWeekSameDayStr));
-    yesterdaySalesTotal = yesterdaySales.reduce((s, e) => s + e.totalAmount, 0);
-    lastWeekSameDaySalesTotal = lastWeekSales.reduce((s, e) => s + e.totalAmount, 0);
+    yesterdaySalesTotal = await getInvoiceSalesTotal(yesterdayStr, yesterdayStr);
+    lastWeekSameDaySalesTotal = await getInvoiceSalesTotal(lastWeekSameDayStr, lastWeekSameDayStr);
   } else {
-    const prevSales = await db.select().from(salesEntriesTable).where(and(gte(salesEntriesTable.salesDate, prevRangeStartStr), lte(salesEntriesTable.salesDate, prevRangeEndStr)));
-    yesterdaySalesTotal = prevSales.reduce((s, e) => s + e.totalAmount, 0);
+    yesterdaySalesTotal = await getInvoiceSalesTotal(prevRangeStartStr, prevRangeEndStr);
     lastWeekSameDaySalesTotal = 0;
   }
 
-  const todaySalesTotal = rangeSales.reduce((s, e) => s + e.totalAmount, 0);
   const todayExpensesTotal = rangeExpenses.reduce((s, e) => s + e.totalAmount, 0);
   const todayWasteTotal = rangeWaste.reduce((s, e) => s + e.costValue, 0);
   const todayProfit = todaySalesTotal - todayExpensesTotal - todayWasteTotal;
 
-  const mtdSalesTotal = mtdSales.reduce((s, e) => s + e.totalAmount, 0);
   const mtdExpensesTotal = mtdExpenses.reduce((s, e) => s + e.totalAmount, 0);
   const mtdWasteTotal = mtdWaste.reduce((s, e) => s + e.costValue, 0);
   const mtdProfit = mtdSalesTotal - mtdExpensesTotal - mtdWasteTotal;
@@ -68,14 +95,7 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const lowStockIngredients = await db.select().from(ingredientsTable).where(eq(ingredientsTable.active, true));
   const lowStockCount = lowStockIngredients.filter(i => i.currentStock <= i.reorderLevel).length;
 
-  const itemRevenueMap = new Map<number, { menuItemId: number; menuItemName: string; quantity: number; revenue: number }>();
-  for (const s of rangeSales) {
-    const existing = itemRevenueMap.get(s.menuItemId) || { menuItemId: s.menuItemId, menuItemName: "", quantity: 0, revenue: 0 };
-    existing.quantity += s.quantity;
-    existing.revenue += s.totalAmount;
-    itemRevenueMap.set(s.menuItemId, existing);
-  }
-
+  const itemRevenueMap = await getItemRevenueFromInvoices(fromDate, toDate);
   const menuItems = await db.select().from(menuItemsTable);
   const menuMap = new Map(menuItems.map(m => [m.id, m]));
   for (const [id, item] of itemRevenueMap) {
@@ -171,9 +191,9 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
   };
 
   const insights: string[] = [];
-  if (todaySalesTotal > 0) insights.push(`Today's sales: ${todaySalesTotal.toFixed(0)}`);
-  if (invoiceStats.count > 0) insights.push(`${invoiceStats.count} invoices, net ${invoiceStats.netSales.toFixed(0)}`);
-  if (todayWasteTotal > 0) insights.push(`Today's waste value: ${todayWasteTotal.toFixed(0)}`);
+  if (todaySalesTotal > 0) insights.push(`Sales: ${todaySalesTotal.toFixed(0)}`);
+  if (invoiceStats.count > 0) insights.push(`${invoiceStats.count} invoices, GST ${invoiceStats.gstCollected.toFixed(0)}`);
+  if (todayWasteTotal > 0) insights.push(`Waste value: ${todayWasteTotal.toFixed(0)}`);
   if (lowStockCount > 0) insights.push(`${lowStockCount} ingredients are below reorder level`);
   if (Number(unsettledDays[0]?.count || 0) > 0) insights.push(`${unsettledDays[0]?.count} unsettled/mismatched days`);
   if (vendorTotalOverdue > 0) insights.push(`${vendorOverdueBills} overdue vendor bills (${vendorTotalOverdue.toFixed(0)})`);
@@ -215,19 +235,13 @@ router.get("/dashboard/profitability", async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || getMonthStart(getToday());
   const toDate = (req.query.toDate as string) || getToday();
 
-  const sales = await db.select().from(salesEntriesTable).where(and(gte(salesEntriesTable.salesDate, fromDate), lte(salesEntriesTable.salesDate, toDate)));
-
-  const itemMap = new Map<number, { menuItemId: number; quantitySold: number; revenue: number }>();
-  for (const s of sales) {
-    const existing = itemMap.get(s.menuItemId) || { menuItemId: s.menuItemId, quantitySold: 0, revenue: 0 };
-    existing.quantitySold += s.quantity;
-    existing.revenue += s.totalAmount;
-    itemMap.set(s.menuItemId, existing);
-  }
+  const itemMap = await getItemRevenueFromInvoices(fromDate, toDate);
+  const menuItemsAll = await db.select().from(menuItemsTable);
+  const menuMap = new Map(menuItemsAll.map(m => [m.id, m]));
 
   const result = [];
   for (const [menuItemId, data] of itemMap) {
-    const [menuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, menuItemId));
+    const menuItem = menuMap.get(menuItemId);
     if (!menuItem) continue;
 
     const recipeLines = await db.select().from(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, menuItemId));
@@ -241,14 +255,14 @@ router.get("/dashboard/profitability", async (req, res): Promise<void> => {
       }
     }
 
-    const productionCost = unitCost * data.quantitySold;
+    const productionCost = unitCost * data.quantity;
     const grossProfit = data.revenue - productionCost;
     const marginPercent = data.revenue > 0 ? (grossProfit / data.revenue) * 100 : 0;
 
     result.push({
       menuItemId,
       menuItemName: menuItem.name,
-      quantitySold: data.quantitySold,
+      quantitySold: data.quantity,
       revenue: data.revenue,
       productionCost,
       grossProfit,
@@ -263,23 +277,23 @@ router.get("/dashboard/daily-pl", async (req, res): Promise<void> => {
   const date = req.query.date as string;
   if (!date) { res.status(400).json({ error: "date is required" }); return; }
 
-  const sales = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.salesDate, date));
+  const totalSales = await getInvoiceSalesTotal(date, date);
   const expenses = await db.select().from(expensesTable).where(eq(expensesTable.expenseDate, date));
   const waste = await db.select().from(wasteEntriesTable).where(eq(wasteEntriesTable.wasteDate, date));
 
-  const totalSales = sales.reduce((s, e) => s + e.totalAmount, 0);
   const wasteCost = waste.reduce((s, e) => s + e.costValue, 0);
   const allocatedExpenses = expenses.reduce((s, e) => s + e.totalAmount, 0);
 
+  const itemMap = await getItemRevenueFromInvoices(date, date);
   let materialCost = 0;
-  for (const s of sales) {
-    const recipeLines = await db.select().from(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, s.menuItemId));
+  for (const [menuItemId, data] of itemMap) {
+    const recipeLines = await db.select().from(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, menuItemId));
     for (const line of recipeLines) {
       const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
       if (ing) {
         const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
         const costPerRecipeUnit = ing.weightedAvgCost / (ing.conversionFactor || 1);
-        materialCost += costPerRecipeUnit * netQty * s.quantity;
+        materialCost += costPerRecipeUnit * netQty * data.quantity;
       }
     }
   }
@@ -306,17 +320,17 @@ router.get("/dashboard/consumption-variance", async (req, res): Promise<void> =>
   const fromDate = (req.query.fromDate as string) || getMonthStart(getToday());
   const toDate = (req.query.toDate as string) || getToday();
 
-  const sales = await db.select().from(salesEntriesTable).where(and(gte(salesEntriesTable.salesDate, fromDate), lte(salesEntriesTable.salesDate, toDate)));
+  const itemMap = await getItemRevenueFromInvoices(fromDate, toDate);
   const snapshots = await db.select().from(stockSnapshotsTable).where(and(gte(stockSnapshotsTable.snapshotDate, fromDate), lte(stockSnapshotsTable.snapshotDate, toDate)));
 
   const theoreticalMap = new Map<number, number>();
-  for (const s of sales) {
-    const recipeLines = await db.select().from(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, s.menuItemId));
+  for (const [menuItemId, data] of itemMap) {
+    const recipeLines = await db.select().from(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, menuItemId));
     for (const line of recipeLines) {
       const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
       const conversionFactor = ing?.conversionFactor || 1;
       const netQty = line.quantity * (1 + (line.wastagePercent || 0) / 100);
-      const consumedInStockUom = (netQty * s.quantity) / conversionFactor;
+      const consumedInStockUom = (netQty * data.quantity) / conversionFactor;
       theoreticalMap.set(line.ingredientId, (theoreticalMap.get(line.ingredientId) || 0) + consumedInStockUom);
     }
   }
@@ -353,10 +367,15 @@ router.get("/dashboard/sales-trend", async (req, res): Promise<void> => {
   const fromDate = (req.query.fromDate as string) || getMonthStart(getToday());
   const toDate = (req.query.toDate as string) || getToday();
 
-  const sales = await db.select().from(salesEntriesTable).where(and(gte(salesEntriesTable.salesDate, fromDate), lte(salesEntriesTable.salesDate, toDate)));
+  const invoices = await db.select({
+    salesDate: salesInvoicesTable.salesDate,
+    finalAmount: salesInvoicesTable.finalAmount,
+  }).from(salesInvoicesTable)
+    .where(and(gte(salesInvoicesTable.salesDate, fromDate), lte(salesInvoicesTable.salesDate, toDate)));
+
   const byDate = new Map<string, number>();
-  for (const s of sales) {
-    byDate.set(s.salesDate, (byDate.get(s.salesDate) || 0) + s.totalAmount);
+  for (const inv of invoices) {
+    byDate.set(inv.salesDate, (byDate.get(inv.salesDate) || 0) + inv.finalAmount);
   }
 
   res.json(Array.from(byDate.entries()).map(([date, value]) => ({ date, value })).sort((a, b) => a.date.localeCompare(b.date)));
@@ -411,26 +430,29 @@ router.get("/dashboard/trend", authMiddleware, async (req, res): Promise<void> =
   const endDate = new Date();
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days + 1);
-  
+
   const fromStr = startDate.toISOString().split("T")[0];
   const toStr = endDate.toISOString().split("T")[0];
-  
-  const sales = await db.select().from(salesEntriesTable)
-    .where(and(gte(salesEntriesTable.salesDate, fromStr), lte(salesEntriesTable.salesDate, toStr)));
+
+  const invoices = await db.select({
+    salesDate: salesInvoicesTable.salesDate,
+    finalAmount: salesInvoicesTable.finalAmount,
+  }).from(salesInvoicesTable)
+    .where(and(gte(salesInvoicesTable.salesDate, fromStr), lte(salesInvoicesTable.salesDate, toStr)));
   const expenses = await db.select().from(expensesTable)
     .where(and(gte(expensesTable.expenseDate, fromStr), lte(expensesTable.expenseDate, toStr)));
   const waste = await db.select().from(wasteEntriesTable)
     .where(and(gte(wasteEntriesTable.wasteDate, fromStr), lte(wasteEntriesTable.wasteDate, toStr)));
-  
+
   const trend: { date: string; sales: number; expenses: number; waste: number; profit: number }[] = [];
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
     const dateStr = d.toISOString().split("T")[0];
-    const daySales = sales.filter(s => s.salesDate === dateStr).reduce((sum, s) => sum + s.totalAmount, 0);
+    const daySales = invoices.filter(i => i.salesDate === dateStr).reduce((sum, i) => sum + i.finalAmount, 0);
     const dayExpenses = expenses.filter(e => e.expenseDate === dateStr).reduce((sum, e) => sum + Number(e.totalAmount), 0);
     const dayWaste = waste.filter(w => w.wasteDate === dateStr).reduce((sum, w) => sum + Number(w.costValue), 0);
     trend.push({ date: dateStr, sales: daySales, expenses: dayExpenses, waste: dayWaste, profit: daySales - dayExpenses - dayWaste });
   }
-  
+
   res.json(trend);
 });
 

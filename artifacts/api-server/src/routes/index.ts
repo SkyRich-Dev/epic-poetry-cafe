@@ -11,7 +11,7 @@ import menuItemsRouter from "./menuItems";
 import purchasesRouter from "./purchases";
 import expensesRouter from "./expenses";
 import inventoryRouter from "./inventory";
-import salesRouter from "./sales";
+
 import wasteRouter from "./waste";
 import trialsRouter from "./trials";
 import dashboardRouter from "./dashboard";
@@ -40,7 +40,7 @@ router.use(menuItemsRouter);
 router.use(purchasesRouter);
 router.use(expensesRouter);
 router.use(inventoryRouter);
-router.use(salesRouter);
+
 router.use(wasteRouter);
 router.use(trialsRouter);
 router.use(dashboardRouter);
