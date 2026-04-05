@@ -18,7 +18,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    setBaseUrl(import.meta.env.VITE_API_BASE_URL?.trim() || null);
+    const apiBase = import.meta.env.VITE_API_BASE_URL?.trim();
+    setBaseUrl(apiBase && !window.location.hostname.includes('replit') ? apiBase : null);
     setAuthTokenGetter(() => localStorage.getItem('token'));
   }, []);
 
