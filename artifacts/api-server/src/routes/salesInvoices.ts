@@ -361,7 +361,7 @@ router.get("/sales-invoices-consumption", authMiddleware, async (req, res): Prom
     itemQty.set(l.menuItemId, (itemQty.get(l.menuItemId) || 0) + l.quantity);
   }
 
-  const consumption = new Map<number, { ingredientId: number; ingredientName: string; totalQty: number; uom: string; lastPrice: number }>();
+  const consumption = new Map<number, { ingredientId: number; ingredientName: string; totalQty: number; uom: string; costPerRecipeUnit: number }>();
   for (const [menuItemId, soldQty] of itemQty) {
     const recipeLines = await db.select({
       ingredientId: recipeLinesTable.ingredientId,
@@ -369,6 +369,7 @@ router.get("/sales-invoices-consumption", authMiddleware, async (req, res): Prom
       quantity: recipeLinesTable.quantity,
       uom: recipeLinesTable.uom,
       lastPrice: ingredientsTable.latestCost,
+      conversionFactor: ingredientsTable.conversionFactor,
     }).from(recipeLinesTable)
       .leftJoin(ingredientsTable, eq(recipeLinesTable.ingredientId, ingredientsTable.id))
       .where(eq(recipeLinesTable.menuItemId, menuItemId));
@@ -377,6 +378,8 @@ router.get("/sales-invoices-consumption", authMiddleware, async (req, res): Prom
       const key = rl.ingredientId;
       const existing = consumption.get(key);
       const needed = soldQty * rl.quantity;
+      const factor = Number(rl.conversionFactor) || 1;
+      const costPerRecipeUnit = (Number(rl.lastPrice) || 0) / factor;
       if (existing) {
         existing.totalQty += needed;
       } else {
@@ -385,7 +388,7 @@ router.get("/sales-invoices-consumption", authMiddleware, async (req, res): Prom
           ingredientName: rl.ingredientName || '',
           totalQty: needed,
           uom: rl.uom || '',
-          lastPrice: Number(rl.lastPrice) || 0,
+          costPerRecipeUnit,
         });
       }
     }
@@ -394,7 +397,8 @@ router.get("/sales-invoices-consumption", authMiddleware, async (req, res): Prom
   res.json(Array.from(consumption.values()).map(c => ({
     ...c,
     totalQty: Math.round(c.totalQty * 1000) / 1000,
-    estimatedCost: Math.round(c.totalQty * c.lastPrice * 100) / 100,
+    rate: Math.round(c.costPerRecipeUnit * 10000) / 10000,
+    estimatedCost: Math.round(c.totalQty * c.costPerRecipeUnit * 100) / 100,
   })));
 });
 

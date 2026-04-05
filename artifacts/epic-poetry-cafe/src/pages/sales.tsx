@@ -314,7 +314,7 @@ export default function Sales() {
               <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Ingredient</th>
               <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Required Qty</th>
               <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">UOM</th>
-              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Rate (Last)</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Rate / Unit</th>
               <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Est. Cost</th>
             </tr></thead>
             <tbody>
@@ -325,7 +325,7 @@ export default function Sales() {
                   <td className="px-4 py-3 font-medium">{c.ingredientName}</td>
                   <td className="px-4 py-3 text-right font-numbers">{c.totalQty}</td>
                   <td className="px-4 py-3 text-muted-foreground">{c.uom}</td>
-                  <td className="px-4 py-3 text-right font-numbers text-muted-foreground">{c.lastPrice > 0 ? formatCurrency(c.lastPrice) : '-'}</td>
+                  <td className="px-4 py-3 text-right font-numbers text-muted-foreground">{(c.rate || c.lastPrice) > 0 ? formatCurrency(c.rate || c.lastPrice) : '-'}</td>
                   <td className="px-4 py-3 text-right font-numbers font-semibold text-orange-600">{c.estimatedCost > 0 ? formatCurrency(c.estimatedCost) : '-'}</td>
                 </tr>
               ))}
