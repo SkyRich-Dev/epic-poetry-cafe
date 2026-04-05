@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, and, gte, lte } from "drizzle-orm";
-import { db, purchasesTable, expensesTable, salesEntriesTable, wasteEntriesTable, ingredientsTable, vendorsTable, menuItemsTable, recipeLinesTable } from "@workspace/db";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { db, purchasesTable, expensesTable, wasteEntriesTable, ingredientsTable, vendorsTable, menuItemsTable, recipeLinesTable, salesInvoicesTable, salesInvoiceLinesTable } from "@workspace/db";
 import { authMiddleware } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -73,6 +73,36 @@ async function computeUnitCost(menuItemId: number): Promise<number> {
   return unitCost;
 }
 
+async function getItemSalesFromInvoices(from: string, to: string) {
+  const invoices = await db.select({ id: salesInvoicesTable.id })
+    .from(salesInvoicesTable)
+    .where(and(gte(salesInvoicesTable.salesDate, from), lte(salesInvoicesTable.salesDate, to)));
+  if (invoices.length === 0) return new Map<number, { quantitySold: number; revenue: number; grossSales: number; totalDiscount: number }>();
+
+  const invoiceIds = invoices.map(i => i.id);
+  const lines = await db.select({
+    menuItemId: salesInvoiceLinesTable.menuItemId,
+    quantity: salesInvoiceLinesTable.quantity,
+    fixedPrice: salesInvoiceLinesTable.fixedPrice,
+    grossLineAmount: salesInvoiceLinesTable.grossLineAmount,
+    lineDiscountAmount: salesInvoiceLinesTable.lineDiscountAmount,
+    finalLineAmount: salesInvoiceLinesTable.finalLineAmount,
+  }).from(salesInvoiceLinesTable)
+    .where(sql`${salesInvoiceLinesTable.invoiceId} IN (${sql.join(invoiceIds.map(id => sql`${id}`), sql`, `)})`);
+
+  const itemMap = new Map<number, { quantitySold: number; revenue: number; grossSales: number; totalDiscount: number }>();
+  for (const l of lines) {
+    if (!l.menuItemId) continue;
+    const existing = itemMap.get(l.menuItemId) || { quantitySold: 0, revenue: 0, grossSales: 0, totalDiscount: 0 };
+    existing.quantitySold += l.quantity;
+    existing.revenue += l.finalLineAmount;
+    existing.grossSales += l.grossLineAmount;
+    existing.totalDiscount += l.lineDiscountAmount;
+    itemMap.set(l.menuItemId, existing);
+  }
+  return itemMap;
+}
+
 router.get("/reports/item-profitability", authMiddleware, async (req, res): Promise<void> => {
   const period = (req.query.period as string) || "monthly";
   if (!["daily", "weekly", "monthly", "custom"].includes(period)) {
@@ -83,28 +113,7 @@ router.get("/reports/item-profitability", authMiddleware, async (req, res): Prom
   }
   const { from, to } = getDateRange(period, req.query.fromDate as string, req.query.toDate as string);
 
-  const sales = await db
-    .select({
-      salesDate: salesEntriesTable.salesDate,
-      menuItemId: salesEntriesTable.menuItemId,
-      quantity: salesEntriesTable.quantity,
-      sellingPrice: salesEntriesTable.sellingPrice,
-      totalAmount: salesEntriesTable.totalAmount,
-      discount: salesEntriesTable.discount,
-    })
-    .from(salesEntriesTable)
-    .where(and(gte(salesEntriesTable.salesDate, from), lte(salesEntriesTable.salesDate, to)));
-
-  const itemMap = new Map<number, { quantitySold: number; revenue: number; grossSales: number; totalDiscount: number }>();
-  for (const s of sales) {
-    const existing = itemMap.get(s.menuItemId) || { quantitySold: 0, revenue: 0, grossSales: 0, totalDiscount: 0 };
-    existing.quantitySold += s.quantity;
-    existing.revenue += s.totalAmount;
-    existing.grossSales += s.quantity * s.sellingPrice;
-    existing.totalDiscount += s.discount;
-    itemMap.set(s.menuItemId, existing);
-  }
-
+  const itemMap = await getItemSalesFromInvoices(from, to);
   const allMenuItems = await db.select().from(menuItemsTable).where(eq(menuItemsTable.active, true));
   const result = [];
 
@@ -228,9 +237,11 @@ router.get("/reports/item-wastage", authMiddleware, async (req, res): Promise<vo
     dailyTrend.set(w.wasteDate, (dailyTrend.get(w.wasteDate) || 0) + w.costValue);
   }
 
-  const salesInPeriod = await db.select().from(salesEntriesTable)
-    .where(and(gte(salesEntriesTable.salesDate, from), lte(salesEntriesTable.salesDate, to)));
-  const totalSalesRevenue = salesInPeriod.reduce((s, e) => s + e.totalAmount, 0);
+  const [invoiceTotals] = await db.select({
+    total: sql<number>`COALESCE(SUM(final_amount), 0)`,
+  }).from(salesInvoicesTable)
+    .where(and(gte(salesInvoicesTable.salesDate, from), lte(salesInvoicesTable.salesDate, to)));
+  const totalSalesRevenue = Number(invoiceTotals?.total || 0);
   const totalWasteCost = wasteEntries.reduce((s, e) => s + e.costValue, 0);
 
   res.json({
@@ -279,17 +290,8 @@ router.get("/reports/export", authMiddleware, async (req, res): Promise<void> =>
       break;
     }
     case "sales": {
-      const data = await db
-        .select({
-          salesDate: salesEntriesTable.salesDate,
-          menuItemName: menuItemsTable.name,
-          quantity: salesEntriesTable.quantity,
-          totalAmount: salesEntriesTable.totalAmount,
-          channel: salesEntriesTable.channel,
-        })
-        .from(salesEntriesTable)
-        .leftJoin(menuItemsTable, eq(salesEntriesTable.menuItemId, menuItemsTable.id));
-      csvContent = "Date,Item,Quantity,Amount,Channel\n" + data.map(d => `${d.salesDate},${d.menuItemName},${d.quantity},${d.totalAmount},${d.channel}`).join("\n");
+      const data = await db.select().from(salesInvoicesTable);
+      csvContent = "Invoice No,Date,Customer,Order Type,Gross Amount,Discount,GST,Final Amount,Payment Mode,Source,Match Status,Verified\n" + data.map(d => `${d.invoiceNo},${d.salesDate},"${d.customerName || ''}",${d.orderType},${d.grossAmount},${d.totalDiscount},${d.gstAmount},${d.finalAmount},${d.paymentMode},${d.sourceType},${d.matchStatus},${d.verified}`).join("\n");
       break;
     }
     case "waste": {
@@ -309,6 +311,11 @@ router.get("/reports/export", authMiddleware, async (req, res): Promise<void> =>
     case "ingredients": {
       const data = await db.select().from(ingredientsTable);
       csvContent = "Code,Name,Stock UOM,Current Stock,Cost,Active\n" + data.map(d => `${d.code},${d.name},${d.stockUom},${d.currentStock},${d.weightedAvgCost},${d.active}`).join("\n");
+      break;
+    }
+    case "sales-invoices": {
+      const data = await db.select().from(salesInvoicesTable);
+      csvContent = "Invoice No,Date,Customer,Gross Amount,Discount,GST,Final Amount,Payment Mode,Match Status,Verified\n" + data.map(d => `${d.invoiceNo},${d.salesDate},"${d.customerName || ''}",${d.grossAmount},${d.totalDiscount},${d.gstAmount},${d.finalAmount},${d.paymentMode},${d.matchStatus},${d.verified}`).join("\n");
       break;
     }
     default:

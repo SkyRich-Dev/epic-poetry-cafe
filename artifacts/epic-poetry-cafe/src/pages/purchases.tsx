@@ -4,11 +4,13 @@ import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge,
 import { Plus, Receipt, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
+import { useToast } from '@/hooks/use-toast';
 
 export default function Purchases() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const isViewer = user?.role === 'viewer';
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const dateParams = { ...(fromDate ? { fromDate } : {}), ...(toDate ? { toDate } : {}) };
@@ -16,6 +18,7 @@ export default function Purchases() {
   const { data: vendors } = useListVendors();
   const { data: ingredients } = useListIngredients();
   
+  const { toast } = useToast();
   const createMut = useCreatePurchase();
   const [isModalOpen, setIsModalOpen] = useState(false);
   
@@ -52,15 +55,16 @@ export default function Purchases() {
   };
 
   const handleSave = async () => {
+    if (!formData.vendorId) { toast({ title: 'Please select a vendor', variant: 'destructive' }); return; }
+    const validLines = lines.filter(l => l.ingredientId > 0 && l.quantity > 0);
+    if (validLines.length === 0) { toast({ title: 'Add at least one item with quantity', variant: 'destructive' }); return; }
     try {
-      const payload = {
-        ...formData,
-        lines: lines.filter(l => l.ingredientId > 0 && l.quantity > 0)
-      };
+      const payload = { ...formData, lines: validLines };
       await createMut.mutateAsync({ data: payload as any });
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
       setIsModalOpen(false);
-    } catch (e) { console.error(e); }
+      toast({ title: 'Purchase recorded' });
+    } catch (e: any) { toast({ title: 'Failed to save purchase', description: e.message, variant: 'destructive' }); }
   };
 
   const handleVerify = async (id: number) => {
@@ -75,7 +79,7 @@ export default function Purchases() {
   return (
     <div className="space-y-6">
       <PageHeader title="Purchases" description="Record inward inventory and vendor bills">
-        <Button onClick={openCreate}><Plus size={18}/> New Purchase</Button>
+        {!isViewer && <Button onClick={openCreate}><Plus size={18}/> New Purchase</Button>}
       </PageHeader>
 
       <DateFilter fromDate={fromDate} toDate={toDate} onChange={(f, t) => { setFromDate(f); setToDate(t); }} />
@@ -130,7 +134,7 @@ export default function Purchases() {
             </div>
             <div>
               <Label>Purchase Date</Label>
-              <Input type="date" value={formData.purchaseDate} onChange={(e:any) => setFormData({...formData, purchaseDate: e.target.value})} />
+              <Input type="date" max={new Date().toISOString().split('T')[0]} value={formData.purchaseDate} onChange={(e:any) => setFormData({...formData, purchaseDate: e.target.value})} />
             </div>
             <div>
               <Label>Invoice Number (Optional)</Label>

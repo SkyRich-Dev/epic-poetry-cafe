@@ -3,9 +3,11 @@ import { useGetStockOverview, useSaveStockSnapshot } from '@workspace/api-client
 import { PageHeader, Button, Input, Modal, formatCurrency, Badge } from '../components/ui-extras';
 import { PackageSearch, AlertCircle, Save } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
 
 export default function Inventory() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: stock, isLoading } = useGetStockOverview();
   const saveMut = useSaveStockSnapshot();
   
@@ -29,7 +31,8 @@ export default function Inventory() {
       await saveMut.mutateAsync({ data: { snapshotDate, items } });
       queryClient.invalidateQueries({ queryKey: ['/api/inventory/stock-overview'] });
       setIsSnapshotOpen(false);
-    } catch(e) { console.error(e); }
+      toast({ title: 'Stock snapshot saved' });
+    } catch(e: any) { toast({ title: 'Failed to save snapshot', description: e.message, variant: 'destructive' }); }
   };
 
   return (
@@ -83,7 +86,7 @@ export default function Inventory() {
               <h4 className="font-semibold text-foreground">Snapshot Date</h4>
               <p className="text-xs text-muted-foreground">Record the actual physical stock to adjust theoretical values.</p>
             </div>
-            <Input type="date" className="w-auto" value={snapshotDate} onChange={(e:any) => setSnapshotDate(e.target.value)} />
+            <Input type="date" max={new Date().toISOString().split('T')[0]} className="w-auto" value={snapshotDate} onChange={(e:any) => setSnapshotDate(e.target.value)} />
           </div>
 
           <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">

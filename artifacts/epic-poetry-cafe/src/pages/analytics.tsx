@@ -82,17 +82,17 @@ function PeriodSelector({ period, setPeriod, date, setDate, fromDate, setFromDat
         <>
           <div>
             <Label className="text-xs">From</Label>
-            <Input type="date" value={fromDate} onChange={(e: any) => setFromDate(e.target.value)} className="h-9 text-sm w-36" />
+            <Input type="date" max={new Date().toISOString().split('T')[0]} value={fromDate} onChange={(e: any) => setFromDate(e.target.value)} className="h-9 text-sm w-36" />
           </div>
           <div>
             <Label className="text-xs">To</Label>
-            <Input type="date" value={toDate} onChange={(e: any) => setToDate(e.target.value)} className="h-9 text-sm w-36" />
+            <Input type="date" max={new Date().toISOString().split('T')[0]} value={toDate} onChange={(e: any) => setToDate(e.target.value)} className="h-9 text-sm w-36" />
           </div>
         </>
       ) : (
         <div>
           <Label className="text-xs">{period === 'daily' ? 'Date' : period === 'weekly' ? 'Week of' : 'Month'}</Label>
-          <Input type="date" value={date} onChange={(e: any) => setDate(e.target.value)} className="h-9 text-sm w-36" />
+          <Input type="date" max={new Date().toISOString().split('T')[0]} value={date} onChange={(e: any) => setDate(e.target.value)} className="h-9 text-sm w-36" />
         </div>
       )}
     </div>
@@ -245,7 +245,7 @@ export default function AnalyticsPage() {
             <SummaryCard title="Gross Profit" value={formatCurrency(profitData.summary.totalGrossProfit)}
               subtitle={`${Number(profitData.summary.avgMarginPercent).toFixed(2)}% margin`}
               trend={profitData.summary.avgMarginPercent >= 60 ? 'up' : profitData.summary.avgMarginPercent >= 30 ? 'neutral' : 'down'} />
-            <SummaryCard title="Items Sold" value={Number(profitData.summary.totalItemsSold).toFixed(2)} />
+            <SummaryCard title="Items Sold" value={Math.round(Number(profitData.summary.totalItemsSold)).toLocaleString()} />
             <SummaryCard title="Avg Margin" value={`${Number(profitData.summary.avgMarginPercent).toFixed(2)}%`}
               trend={profitData.summary.avgMarginPercent >= 60 ? 'up' : profitData.summary.avgMarginPercent >= 30 ? 'neutral' : 'down'} />
           </div>
@@ -279,7 +279,7 @@ export default function AnalyticsPage() {
                           {Number(item.costToSaleRatio).toFixed(2)}%
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-right">{Number(item.quantitySold).toFixed(2)}</td>
+                      <td className="px-5 py-3 text-right">{Math.round(Number(item.quantitySold)).toLocaleString()}</td>
                       <td className="px-5 py-3 text-right font-medium">{formatCurrency(item.netRevenue)}</td>
                       <td className="px-5 py-3 text-right text-muted-foreground">{formatCurrency(item.totalProductionCost)}</td>
                       <td className="px-5 py-3 text-right font-semibold">{formatCurrency(item.grossProfit)}</td>
@@ -301,9 +301,9 @@ export default function AnalyticsPage() {
             <SummaryCard title="Total Waste Cost" value={formatCurrency(wasteData.summary.totalWasteCost)}
               subtitle={`${Number(wasteData.summary.wasteToSalesPercent).toFixed(2)}% of sales`}
               trend={wasteData.summary.wasteToSalesPercent <= 2 ? 'up' : wasteData.summary.wasteToSalesPercent <= 5 ? 'neutral' : 'down'} />
-            <SummaryCard title="Waste Entries" value={Number(wasteData.summary.totalWasteEntries).toFixed(2)} />
-            <SummaryCard title="Ingredients Wasted" value={Number(wasteData.summary.uniqueIngredientsWasted).toFixed(2)} />
-            <SummaryCard title="Menu Items Wasted" value={Number(wasteData.summary.uniqueMenuItemsWasted).toFixed(2)} />
+            <SummaryCard title="Waste Entries" value={Math.round(Number(wasteData.summary.totalWasteEntries)).toLocaleString()} />
+            <SummaryCard title="Ingredients Wasted" value={Math.round(Number(wasteData.summary.uniqueIngredientsWasted)).toLocaleString()} />
+            <SummaryCard title="Menu Items Wasted" value={Math.round(Number(wasteData.summary.uniqueMenuItemsWasted)).toLocaleString()} />
           </div>
 
           {wasteData.ingredientWaste.length > 0 && (
@@ -327,7 +327,7 @@ export default function AnalyticsPage() {
                     {wasteData.ingredientWaste.map(item => (
                       <tr key={item.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-5 py-3 font-medium">{item.name}</td>
-                        <td className="px-5 py-3 text-right">{Number(item.entries).toFixed(2)}</td>
+                        <td className="px-5 py-3 text-right">{Math.round(Number(item.entries))}</td>
                         <td className="px-5 py-3 text-right font-medium">{Number(item.totalQuantity).toFixed(2)}</td>
                         <td className="px-5 py-3 text-muted-foreground">{item.uom}</td>
                         <td className="px-5 py-3 text-right font-semibold text-red-600">{formatCurrency(item.totalCostValue)}</td>
@@ -365,7 +365,7 @@ export default function AnalyticsPage() {
                     {wasteData.menuItemWaste.map(item => (
                       <tr key={item.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-5 py-3 font-medium">{item.name}</td>
-                        <td className="px-5 py-3 text-right">{Number(item.entries).toFixed(2)}</td>
+                        <td className="px-5 py-3 text-right">{Math.round(Number(item.entries))}</td>
                         <td className="px-5 py-3 text-right font-medium">{Number(item.totalQuantity).toFixed(2)}</td>
                         <td className="px-5 py-3 text-muted-foreground">{item.uom}</td>
                         <td className="px-5 py-3 text-right font-semibold text-red-600">{formatCurrency(item.totalCostValue)}</td>

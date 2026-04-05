@@ -26,6 +26,7 @@ import Settlements from "./pages/settlements";
 import PettyCash from "./pages/petty-cash";
 import EmployeesPage from "./pages/employees";
 import AttendancePage from "./pages/attendance";
+import VendorDetailPage from "./pages/vendor-detail";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -87,6 +88,7 @@ function Router() {
       <Route path="/petty-cash" component={() => <ProtectedRoute component={PettyCash} />} />
       <Route path="/employees" component={() => <ProtectedRoute component={EmployeesPage} />} />
       <Route path="/attendance" component={() => <ProtectedRoute component={AttendancePage} />} />
+      <Route path="/vendors/:id" component={() => <ProtectedRoute component={VendorDetailPage} />} />
       <Route component={NotFound} />
     </Switch>
   );

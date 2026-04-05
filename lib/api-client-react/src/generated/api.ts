@@ -5026,6 +5026,88 @@ export const useUpdateTrial = <
 };
 
 /**
+ * @summary Delete trial
+ */
+export const getDeleteTrialUrl = (id: number) => {
+  return `/api/trials/${id}`;
+};
+
+export const deleteTrial = async (
+  id: number,
+  options?: RequestInit,
+): Promise<{ success: boolean }> => {
+  return customFetch<{ success: boolean }>(getDeleteTrialUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteTrialMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteTrial>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteTrial>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteTrial"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteTrial>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+    return deleteTrial(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteTrialMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteTrial>>
+>;
+export type DeleteTrialMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete trial
+ */
+export const useDeleteTrial = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteTrial>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteTrial>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteTrialMutationOptions(options));
+};
+
+/**
  * @summary Create trial version
  */
 export const getCreateTrialVersionUrl = (id: number) => {

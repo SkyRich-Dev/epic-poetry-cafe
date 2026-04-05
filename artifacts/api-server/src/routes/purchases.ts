@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
 import { eq, and, gte, lte } from "drizzle-orm";
-import { db, purchasesTable, purchaseLinesTable, vendorsTable, ingredientsTable } from "@workspace/db";
+import { db, purchasesTable, purchaseLinesTable, vendorsTable, ingredientsTable, vendorLedgerTable } from "@workspace/db";
 import { ListPurchasesResponse, CreatePurchaseBody, GetPurchaseParams, GetPurchaseResponse } from "@workspace/api-zod";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
+import { validateNotFutureDate } from "../lib/dateValidation";
 
 const router: IRouter = Router();
 
@@ -25,6 +26,10 @@ router.get("/purchases", async (req, res): Promise<void> => {
       paymentMode: purchasesTable.paymentMode,
       paymentStatus: purchasesTable.paymentStatus,
       totalAmount: purchasesTable.totalAmount,
+      paidAmount: purchasesTable.paidAmount,
+      pendingAmount: purchasesTable.pendingAmount,
+      dueDate: purchasesTable.dueDate,
+      vendorInvoiceNumber: purchasesTable.vendorInvoiceNumber,
       notes: purchasesTable.notes,
       verified: purchasesTable.verified,
       verifiedBy: purchasesTable.verifiedBy,
@@ -34,8 +39,12 @@ router.get("/purchases", async (req, res): Promise<void> => {
     .from(purchasesTable)
     .leftJoin(vendorsTable, eq(purchasesTable.vendorId, vendorsTable.id));
 
-  const purchases = whereClause
-    ? await query.where(whereClause).orderBy(purchasesTable.createdAt)
+  if (req.query.vendorId) conditions.push(eq(purchasesTable.vendorId, Number(req.query.vendorId)));
+  if (req.query.paymentStatus) conditions.push(eq(purchasesTable.paymentStatus, req.query.paymentStatus as string));
+
+  const finalWhere = conditions.length > 0 ? and(...conditions) : undefined;
+  const purchases = finalWhere
+    ? await query.where(finalWhere).orderBy(purchasesTable.createdAt)
     : await query.orderBy(purchasesTable.createdAt);
   res.json(purchases);
 });
@@ -43,6 +52,8 @@ router.get("/purchases", async (req, res): Promise<void> => {
 router.post("/purchases", authMiddleware, async (req, res): Promise<void> => {
   const parsed = CreatePurchaseBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const dateErr = validateNotFutureDate(parsed.data.purchaseDate, "Purchase date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
   const purchaseNumber = await generateCode("PUR", "purchases");
   let totalAmount = 0;
@@ -85,7 +96,35 @@ router.post("/purchases", authMiddleware, async (req, res): Promise<void> => {
     }
   }
 
-  await db.update(purchasesTable).set({ totalAmount }).where(eq(purchasesTable.id, purchase.id));
+  const paymentStatus = parsed.data.paymentStatus === "paid" ? "fully_paid" : "unpaid";
+  await db.update(purchasesTable).set({
+    totalAmount,
+    grossAmount: totalAmount,
+    pendingAmount: paymentStatus === "fully_paid" ? 0 : totalAmount,
+    paidAmount: paymentStatus === "fully_paid" ? totalAmount : 0,
+    paymentStatus,
+    vendorInvoiceNumber: parsed.data.invoiceNumber || undefined,
+    dueDate: parsed.data.dueDate || undefined,
+  }).where(eq(purchasesTable.id, purchase.id));
+
+  const lastLedger = await db.select().from(vendorLedgerTable)
+    .where(eq(vendorLedgerTable.vendorId, parsed.data.vendorId))
+    .orderBy(vendorLedgerTable.id)
+    .limit(1);
+  const prevBalance = lastLedger.length > 0 ? lastLedger[0].runningBalance : 0;
+
+  await db.insert(vendorLedgerTable).values({
+    vendorId: parsed.data.vendorId,
+    transactionDate: parsed.data.purchaseDate,
+    transactionType: "purchase",
+    referenceType: "purchase",
+    referenceId: purchase.id,
+    debit: totalAmount,
+    credit: 0,
+    runningBalance: prevBalance + totalAmount,
+    description: `Purchase ${purchaseNumber} - ${parsed.data.invoiceNumber || 'No invoice'}`,
+  });
+
   await createAuditLog("purchases", purchase.id, "create", null, { purchaseNumber, totalAmount });
 
   const [vendor] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, parsed.data.vendorId));
@@ -162,6 +201,16 @@ router.delete("/purchases/:id", authMiddleware, async (req, res): Promise<void> 
   const [existing] = await db.select().from(purchasesTable).where(eq(purchasesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
+
+  const lines = await db.select().from(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, id));
+  for (const line of lines) {
+    const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
+    if (ing) {
+      const newStock = Math.max(0, ing.currentStock - line.quantity);
+      await db.update(ingredientsTable).set({ currentStock: newStock }).where(eq(ingredientsTable.id, line.ingredientId));
+    }
+  }
+
   await db.delete(purchaseLinesTable).where(eq(purchaseLinesTable.purchaseId, id));
   await db.delete(purchasesTable).where(eq(purchasesTable.id, id));
   await createAuditLog("purchases", id, "delete", existing, null);

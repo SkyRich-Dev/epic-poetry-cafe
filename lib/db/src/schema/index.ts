@@ -15,3 +15,6 @@ export * from "./auditLogs";
 export * from "./settlements";
 export * from "./pettyCash";
 export * from "./employees";
+export * from "./vendorPayments";
+export * from "./salesInvoices";
+export * from "./posIntegrations";

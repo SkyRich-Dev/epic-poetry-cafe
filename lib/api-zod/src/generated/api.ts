@@ -219,6 +219,8 @@ export const GetConfigResponse = zod.object({
   lowStockAlertDays: zod.number().optional(),
   dailyAllocationMethod: zod.string().optional(),
   taxRate: zod.number().optional(),
+  allowedWeekOffsPerMonth: zod.number().optional(),
+  absentPenaltyMultiplier: zod.number().optional(),
 });
 
 /**
@@ -233,6 +235,8 @@ export const UpdateConfigBody = zod.object({
   lowStockAlertDays: zod.number().optional(),
   dailyAllocationMethod: zod.string().optional(),
   taxRate: zod.number().optional(),
+  allowedWeekOffsPerMonth: zod.number().optional(),
+  absentPenaltyMultiplier: zod.number().optional(),
 });
 
 export const UpdateConfigResponse = zod.object({
@@ -245,6 +249,8 @@ export const UpdateConfigResponse = zod.object({
   lowStockAlertDays: zod.number().optional(),
   dailyAllocationMethod: zod.string().optional(),
   taxRate: zod.number().optional(),
+  allowedWeekOffsPerMonth: zod.number().optional(),
+  absentPenaltyMultiplier: zod.number().optional(),
 });
 
 /**
@@ -1370,6 +1376,7 @@ export const CreateTrialVersionParams = zod.object({
 });
 
 export const CreateTrialVersionBody = zod.object({
+  trialDate: zod.string().optional(),
   batchSize: zod.number(),
   yieldQty: zod.number(),
   yieldUom: zod.string(),

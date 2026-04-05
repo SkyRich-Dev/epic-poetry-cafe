@@ -77,7 +77,7 @@ router.get("/trials/:id", async (req, res): Promise<void> => {
       .from(trialIngredientLinesTable)
       .leftJoin(ingredientsTable, eq(trialIngredientLinesTable.ingredientId, ingredientsTable.id))
       .where(eq(trialIngredientLinesTable.trialVersionId, v.id));
-    enrichedVersions.push({ ...v, ingredients: lines });
+    enrichedVersions.push({ ...v, trialDate: v.trialDate, inventoryDeducted: v.inventoryDeducted, ingredients: lines });
   }
 
   res.json({ trial, versions: enrichedVersions });
@@ -113,50 +113,77 @@ router.post("/trials/:id/versions", authMiddleware, async (req, res): Promise<vo
   const versionNumber = existingVersions.length + 1;
 
   let totalCost = 0;
-  const ingredientData = [];
+  const ingredientData: any[] = [];
   for (const ingLine of parsed.data.ingredients) {
     const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, ingLine.ingredientId));
-    const costPerStockUnit = ing ? ing.weightedAvgCost : 0;
-    const conversionFactor = ing ? (ing.conversionFactor || 1) : 1;
+    if (!ing) { res.status(400).json({ error: `Ingredient #${ingLine.ingredientId} not found` }); return; }
+    const costPerStockUnit = ing.weightedAvgCost;
+    const conversionFactor = ing.conversionFactor || 1;
     const costPerUnit = costPerStockUnit / conversionFactor;
-    const lineCost = costPerUnit * ingLine.actualQty;
+    const actualUsed = ingLine.actualQty + (ingLine.wastageQty ?? 0);
+    const lineCost = costPerUnit * actualUsed;
     totalCost += lineCost;
-    ingredientData.push({ ...ingLine, costPerUnit, totalCost: lineCost, ingredientName: ing?.name ?? "" });
-  }
-
-  const costPerUnit = parsed.data.yieldQty > 0 ? totalCost / parsed.data.yieldQty : 0;
-
-  const [version] = await db.insert(trialVersionsTable).values({
-    trialId: params.data.id,
-    versionNumber,
-    batchSize: parsed.data.batchSize,
-    yieldQty: parsed.data.yieldQty,
-    yieldUom: parsed.data.yieldUom,
-    prepTime: parsed.data.prepTime,
-    totalCost,
-    costPerUnit,
-    status: parsed.data.status ?? "draft",
-    tasteScore: parsed.data.tasteScore,
-    appearanceScore: parsed.data.appearanceScore,
-    consistencyScore: parsed.data.consistencyScore,
-    notes: parsed.data.notes,
-  }).returning();
-
-  for (const ingLine of ingredientData) {
-    await db.insert(trialIngredientLinesTable).values({
-      trialVersionId: version.id,
-      ingredientId: ingLine.ingredientId,
-      plannedQty: ingLine.plannedQty,
-      actualQty: ingLine.actualQty,
-      uom: ingLine.uom,
-      wastageQty: ingLine.wastageQty ?? 0,
-      costPerUnit: ingLine.costPerUnit,
-      totalCost: ingLine.totalCost,
+    ingredientData.push({
+      ...ingLine, costPerUnit, totalCost: lineCost,
+      ingredientName: ing.name, currentStock: ing.currentStock,
+      stockUom: ing.stockUom, conversionFactor,
     });
   }
 
-  await createAuditLog("trials", params.data.id, "version_created", null, { versionNumber });
-  res.status(201).json({ ...version, ingredients: ingredientData });
+  const costPerUnit = parsed.data.yieldQty > 0 ? totalCost / parsed.data.yieldQty : 0;
+  const trialDate = parsed.data.trialDate || new Date().toISOString().split("T")[0];
+
+  const result = await db.transaction(async (tx) => {
+    const [version] = await tx.insert(trialVersionsTable).values({
+      trialId: params.data.id,
+      versionNumber,
+      trialDate,
+      batchSize: parsed.data.batchSize,
+      yieldQty: parsed.data.yieldQty,
+      yieldUom: parsed.data.yieldUom,
+      prepTime: parsed.data.prepTime,
+      totalCost,
+      costPerUnit,
+      status: parsed.data.status ?? "draft",
+      tasteScore: parsed.data.tasteScore,
+      appearanceScore: parsed.data.appearanceScore,
+      consistencyScore: parsed.data.consistencyScore,
+      notes: parsed.data.notes,
+      inventoryDeducted: 1,
+    }).returning();
+
+    for (const ingLine of ingredientData) {
+      await tx.insert(trialIngredientLinesTable).values({
+        trialVersionId: version.id,
+        ingredientId: ingLine.ingredientId,
+        plannedQty: ingLine.plannedQty,
+        actualQty: ingLine.actualQty,
+        uom: ingLine.uom,
+        wastageQty: ingLine.wastageQty ?? 0,
+        costPerUnit: ingLine.costPerUnit,
+        totalCost: ingLine.totalCost,
+      });
+    }
+
+    const deductionMap = new Map<number, number>();
+    for (const ingLine of ingredientData) {
+      const actualUsed = ingLine.actualQty + (ingLine.wastageQty ?? 0);
+      const stockDeduction = actualUsed / ingLine.conversionFactor;
+      deductionMap.set(ingLine.ingredientId, (deductionMap.get(ingLine.ingredientId) || 0) + stockDeduction);
+    }
+    for (const [ingId, totalDeduction] of deductionMap) {
+      const [fresh] = await tx.select().from(ingredientsTable).where(eq(ingredientsTable.id, ingId));
+      if (fresh) {
+        const newStock = Math.max(0, fresh.currentStock - totalDeduction);
+        await tx.update(ingredientsTable).set({ currentStock: newStock }).where(eq(ingredientsTable.id, ingId));
+      }
+    }
+
+    return version;
+  });
+
+  await createAuditLog("trials", params.data.id, "version_created", null, { versionNumber, totalCost, ingredientsUsed: ingredientData.length, inventoryDeducted: true });
+  res.status(201).json({ ...result, ingredients: ingredientData });
 });
 
 router.post("/trials/:trialId/versions/:versionId/convert", authMiddleware, async (req, res): Promise<void> => {

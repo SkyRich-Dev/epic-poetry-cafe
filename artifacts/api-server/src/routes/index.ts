@@ -11,7 +11,7 @@ import menuItemsRouter from "./menuItems";
 import purchasesRouter from "./purchases";
 import expensesRouter from "./expenses";
 import inventoryRouter from "./inventory";
-import salesRouter from "./sales";
+
 import wasteRouter from "./waste";
 import trialsRouter from "./trials";
 import dashboardRouter from "./dashboard";
@@ -22,6 +22,9 @@ import settlementsRouter from "./settlements";
 import pettyCashRouter from "./pettyCash";
 import employeesRouter from "./employees";
 import backupRouter from "./backup";
+import vendorPaymentsRouter from "./vendorPayments";
+import salesInvoicesRouter from "./salesInvoices";
+import posIntegrationsRouter from "./posIntegrations";
 
 const router: IRouter = Router();
 
@@ -37,7 +40,7 @@ router.use(menuItemsRouter);
 router.use(purchasesRouter);
 router.use(expensesRouter);
 router.use(inventoryRouter);
-router.use(salesRouter);
+
 router.use(wasteRouter);
 router.use(trialsRouter);
 router.use(dashboardRouter);
@@ -48,5 +51,8 @@ router.use(settlementsRouter);
 router.use(pettyCashRouter);
 router.use(employeesRouter);
 router.use(backupRouter);
+router.use(vendorPaymentsRouter);
+router.use(salesInvoicesRouter);
+router.use(posIntegrationsRouter);
 
 export default router;

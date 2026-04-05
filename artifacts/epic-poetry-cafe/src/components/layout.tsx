@@ -5,9 +5,9 @@ import {
   LayoutDashboard, Coffee, Users, Package, ShoppingCart, 
   Receipt, FileText, Settings, LogOut, Menu, X, Trash2, 
   FlaskConical, ClipboardList, PackageSearch, Upload, BarChart3,
-  Banknote, Wallet, Store, UserCheck, CalendarDays
+  Banknote, Wallet, Store, UserCheck, CalendarDays, KeyRound, FileSpreadsheet
 } from 'lucide-react';
-import { cn } from './ui-extras';
+import { cn, Modal, Button, Input, Label } from './ui-extras';
 
 type NavItem = { name: string; path: string; icon: any; adminOnly?: boolean };
 type NavGroup = { title: string; items: NavItem[] };
@@ -71,6 +71,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [pwModal, setPwModal] = useState(false);
+  const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState('');
+  const [pwSaving, setPwSaving] = useState(false);
+
+  const handleChangePassword = async () => {
+    setPwError(''); setPwSuccess('');
+    if (pwForm.newPassword !== pwForm.confirmPassword) { setPwError('Passwords do not match'); return; }
+    if (pwForm.newPassword.length < 6) { setPwError('Password must be at least 6 characters'); return; }
+    setPwSaving(true);
+    try {
+      const base = import.meta.env.BASE_URL || '/';
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${base}api/auth/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ currentPassword: pwForm.currentPassword, newPassword: pwForm.newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPwError(data.error || 'Failed to change password'); }
+      else { setPwSuccess('Password changed successfully!'); setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); }
+    } catch { setPwError('Network error'); }
+    setPwSaving(false);
+  };
 
   const toggleMobile = () => setMobileOpen(!mobileOpen);
   const closeMobile = () => setMobileOpen(false);
@@ -137,10 +162,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <span className="text-sm font-semibold text-white">{user?.fullName || 'User'}</span>
               <span className="text-xs text-sidebar-foreground/60 capitalize">{user?.role || 'Staff'}</span>
             </div>
-            <button onClick={logout} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sidebar-foreground/60 hover:text-white hover:bg-sidebar-accent transition-colors text-sm" title="Logout">
-              <LogOut size={16} />
-              <span>Logout</span>
-            </button>
+            <div className="flex items-center gap-1">
+              <button onClick={() => { setPwModal(true); setPwError(''); setPwSuccess(''); }} className="flex items-center gap-1 px-2 py-2 rounded-lg text-sidebar-foreground/60 hover:text-white hover:bg-sidebar-accent transition-colors text-sm" title="Change Password">
+                <KeyRound size={16} />
+              </button>
+              <button onClick={logout} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sidebar-foreground/60 hover:text-white hover:bg-sidebar-accent transition-colors text-sm" title="Logout">
+                <LogOut size={16} />
+                <span>Logout</span>
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -156,8 +186,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="max-w-7xl mx-auto">
             {children}
           </div>
+          <footer className="text-center text-xs text-muted-foreground py-4 mt-8 border-t">
+            Powered by SkyRich
+          </footer>
         </div>
       </main>
+
+      <Modal isOpen={pwModal} onClose={() => setPwModal(false)} title="Change Password"
+        footer={<><Button variant="ghost" onClick={() => setPwModal(false)}>Cancel</Button><Button onClick={handleChangePassword} disabled={pwSaving}>{pwSaving ? 'Saving...' : 'Change Password'}</Button></>}>
+        <div className="space-y-4 py-2">
+          {pwError && <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200">{pwError}</div>}
+          {pwSuccess && <div className="p-3 rounded-lg bg-emerald-50 text-emerald-700 text-sm border border-emerald-200">{pwSuccess}</div>}
+          <div><Label>Current Password</Label><Input type="password" value={pwForm.currentPassword} onChange={(e: any) => setPwForm({...pwForm, currentPassword: e.target.value})} placeholder="Enter current password" /></div>
+          <div><Label>New Password</Label><Input type="password" value={pwForm.newPassword} onChange={(e: any) => setPwForm({...pwForm, newPassword: e.target.value})} placeholder="Min 6 characters" /></div>
+          <div><Label>Confirm New Password</Label><Input type="password" value={pwForm.confirmPassword} onChange={(e: any) => setPwForm({...pwForm, confirmPassword: e.target.value})} placeholder="Re-enter new password" /></div>
+        </div>
+      </Modal>
     </div>
   );
 }

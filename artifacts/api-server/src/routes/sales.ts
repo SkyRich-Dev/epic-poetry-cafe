@@ -3,6 +3,7 @@ import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { db, salesEntriesTable, menuItemsTable } from "@workspace/db";
 import { ListSalesResponse, CreateSalesEntryBody, UpdateSalesEntryParams, UpdateSalesEntryBody, DeleteSalesEntryParams, GetDailySalesSummaryQueryParams } from "@workspace/api-zod";
 import { authMiddleware, adminOnly } from "../lib/auth";
+import { validateNotFutureDate } from "../lib/dateValidation";
 import { createAuditLog } from "../lib/audit";
 
 const router: IRouter = Router();
@@ -42,19 +43,24 @@ router.get("/sales", async (req, res): Promise<void> => {
 router.post("/sales", authMiddleware, async (req, res): Promise<void> => {
   const parsed = CreateSalesEntryBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const totalAmount = parsed.data.quantity * parsed.data.sellingPrice - (parsed.data.discount ?? 0);
+  const dateErr = validateNotFutureDate(parsed.data.salesDate, "Sales date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
+  const [menuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, parsed.data.menuItemId));
+  if (!menuItem) { res.status(400).json({ error: "Invalid menu item" }); return; }
+  const sellingPrice = menuItem.sellingPrice;
+  const discount = parsed.data.discount ?? 0;
+  const totalAmount = parsed.data.quantity * sellingPrice - discount;
   const [entry] = await db.insert(salesEntriesTable).values({
     salesDate: parsed.data.salesDate,
     menuItemId: parsed.data.menuItemId,
     quantity: parsed.data.quantity,
-    sellingPrice: parsed.data.sellingPrice,
+    sellingPrice,
     totalAmount,
-    discount: parsed.data.discount ?? 0,
+    discount,
     channel: parsed.data.channel,
     notes: parsed.data.notes,
   }).returning();
 
-  const [menuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, parsed.data.menuItemId));
   await createAuditLog("sales", entry.id, "create", null, entry);
   res.status(201).json({ ...entry, menuItemName: menuItem?.name ?? "" });
 });
@@ -64,12 +70,21 @@ router.patch("/sales/:id", authMiddleware, async (req, res): Promise<void> => {
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateSalesEntryBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (parsed.data.salesDate) { const dateErr = validateNotFutureDate(parsed.data.salesDate, "Sales date"); if (dateErr) { res.status(400).json({ error: dateErr }); return; } }
   const [existing] = await db.select().from(salesEntriesTable).where(eq(salesEntriesTable.id, params.data.id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }
   const updates: any = { ...parsed.data };
+  if (parsed.data.menuItemId && parsed.data.menuItemId !== existing.menuItemId) {
+    const [newItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, parsed.data.menuItemId));
+    if (!newItem) { res.status(400).json({ error: "Invalid menu item" }); return; }
+    updates.sellingPrice = newItem.sellingPrice;
+  }
+  delete updates.sellingPrice;
+  const [currentMenuItem] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, parsed.data.menuItemId ?? existing.menuItemId));
+  const price = currentMenuItem?.sellingPrice ?? existing.sellingPrice;
+  updates.sellingPrice = price;
   const qty = parsed.data.quantity ?? existing.quantity;
-  const price = parsed.data.sellingPrice ?? existing.sellingPrice;
   const disc = parsed.data.discount ?? existing.discount;
   updates.totalAmount = qty * price - disc;
   const [entry] = await db.update(salesEntriesTable).set(updates).where(eq(salesEntriesTable.id, params.data.id)).returning();

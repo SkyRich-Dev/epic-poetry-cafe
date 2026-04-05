@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, ingredientsTable, categoriesTable, ingredientVendorMappingTable, vendorsTable } from "@workspace/db";
+import { db, ingredientsTable, categoriesTable, ingredientVendorMappingTable, vendorsTable, recipeLinesTable, purchaseLinesTable } from "@workspace/db";
 import { ListIngredientsResponse, CreateIngredientBody, GetIngredientParams, GetIngredientResponse, UpdateIngredientParams, UpdateIngredientBody, ListIngredientVendorMappingsParams, ListIngredientVendorMappingsResponse, CreateIngredientVendorMappingParams, CreateIngredientVendorMappingBody } from "@workspace/api-zod";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
@@ -104,9 +104,21 @@ router.delete("/ingredients/:id", authMiddleware, async (req, res): Promise<void
   const [existing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, params.data.id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
-  const [ing] = await db.delete(ingredientsTable).where(eq(ingredientsTable.id, params.data.id)).returning();
-  await createAuditLog("ingredients", ing.id, "delete", ing, null);
-  res.json({ success: true });
+
+  const [usedInRecipe] = await db.select({ id: recipeLinesTable.id }).from(recipeLinesTable).where(eq(recipeLinesTable.ingredientId, params.data.id)).limit(1);
+  if (usedInRecipe) { res.status(400).json({ error: "Cannot delete: this ingredient is used in recipes." }); return; }
+
+  const [usedInPurchase] = await db.select({ id: purchaseLinesTable.id }).from(purchaseLinesTable).where(eq(purchaseLinesTable.ingredientId, params.data.id)).limit(1);
+  if (usedInPurchase) { res.status(400).json({ error: "Cannot delete: this ingredient has purchase records." }); return; }
+
+  try {
+    const [ing] = await db.delete(ingredientsTable).where(eq(ingredientsTable.id, params.data.id)).returning();
+    await createAuditLog("ingredients", ing.id, "delete", ing, null);
+    res.json({ success: true });
+  } catch (e: any) {
+    if (e.code === '23503') { res.status(400).json({ error: "Cannot delete: this ingredient is referenced by other records." }); return; }
+    throw e;
+  }
 });
 
 router.patch("/ingredients/:id/verify", authMiddleware, adminOnly, async (req, res): Promise<void> => {

@@ -4,7 +4,8 @@ import * as XLSX from "xlsx";
 import { eq } from "drizzle-orm";
 import {
   db,
-  salesEntriesTable,
+  salesInvoicesTable,
+  salesInvoiceLinesTable,
   menuItemsTable,
   recipeLinesTable,
   categoriesTable,
@@ -13,9 +14,11 @@ import {
   vendorsTable,
   ingredientsTable,
   expensesTable,
+  salesImportBatchesTable,
 } from "@workspace/db";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
+import { isFutureDate, getTodayISO } from "../lib/dateValidation";
 import { generateCode } from "../lib/codeGenerator";
 import { logger } from "../lib/logger";
 
@@ -113,65 +116,6 @@ function safeParseFile(buffer: Buffer): { rows: Record<string, any>[]; error?: s
   }
 }
 
-router.post("/upload/sales", authMiddleware, handleUpload, async (req, res): Promise<void> => {
-  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
-
-  const { rows, error } = safeParseFile(req.file.buffer);
-  if (error) { res.status(400).json({ error }); return; }
-  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
-
-  const menuItems = await db.select().from(menuItemsTable);
-  const menuByName = new Map(menuItems.map(m => [m.name.toLowerCase().trim(), m]));
-  const menuById = new Map(menuItems.map(m => [m.id, m]));
-
-  const results: { row: number; status: string; error?: string; data?: any }[] = [];
-  let successCount = 0;
-
-  for (let i = 0; i < rows.length; i++) {
-    const raw = normalizeRow(rows[i]);
-    try {
-      const salesDate = toDateStr(raw.date || raw.sales_date);
-      const itemName = String(raw.item || raw.menu_item || raw.item_name || raw.menu_item_name || "").trim();
-      const itemId = toNum(raw.item_id || raw.menu_item_id);
-      const quantity = toNum(raw.quantity || raw.qty);
-      const sellingPrice = toNum(raw.price || raw.selling_price || raw.unit_price || raw.rate);
-      const discount = toNum(raw.discount || 0);
-      const channel = String(raw.channel || "DINE_IN").toUpperCase().replace(/\s+/g, "_");
-      const notes = String(raw.notes || raw.remarks || "");
-
-      let menuItem = itemId ? menuById.get(itemId) : undefined;
-      if (!menuItem && itemName) {
-        menuItem = menuByName.get(itemName.toLowerCase());
-      }
-      if (!menuItem) { results.push({ row: i + 2, status: "error", error: `Menu item not found: "${itemName || itemId}"` }); continue; }
-      if (quantity <= 0) { results.push({ row: i + 2, status: "error", error: "Quantity must be > 0" }); continue; }
-
-      const price = sellingPrice > 0 ? sellingPrice : menuItem.sellingPrice;
-      const totalAmount = quantity * price - discount;
-
-      const [entry] = await db.insert(salesEntriesTable).values({
-        salesDate,
-        menuItemId: menuItem.id,
-        quantity,
-        sellingPrice: price,
-        totalAmount,
-        discount,
-        channel,
-        notes: notes || undefined,
-      }).returning();
-
-      await createAuditLog("sales", entry.id, "create", null, entry);
-      successCount++;
-      results.push({ row: i + 2, status: "success", data: { id: entry.id, item: menuItem.name, quantity, total: totalAmount } });
-    } catch (e: any) {
-      logger.error({ err: e, row: i + 2 }, "Sales upload row error");
-      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
-    }
-  }
-
-  res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results });
-});
-
 router.post("/upload/purchases", authMiddleware, handleUpload, async (req, res): Promise<void> => {
   if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
 
@@ -193,6 +137,7 @@ router.post("/upload/purchases", authMiddleware, handleUpload, async (req, res):
     const raw = normalizeRow(rows[i]);
     try {
       const purchaseDate = toDateStr(raw.date || raw.purchase_date);
+      if (isFutureDate(purchaseDate)) { results.push({ row: i + 2, status: "error", error: `Date cannot be in the future (${purchaseDate}). Today is ${getTodayISO()}.` }); continue; }
       const vendorName = String(raw.vendor || raw.vendor_name || "").trim();
       const vendorId = toNum(raw.vendor_id);
       const ingredientName = String(raw.ingredient || raw.ingredient_name || raw.item || raw.item_name || "").trim();
@@ -309,6 +254,7 @@ router.post("/upload/expenses", authMiddleware, handleUpload, async (req, res): 
     const raw = normalizeRow(rows[i]);
     try {
       const expenseDate = toDateStr(raw.date || raw.expense_date);
+      if (isFutureDate(expenseDate)) { results.push({ row: i + 2, status: "error", error: `Date cannot be in the future (${expenseDate}). Today is ${getTodayISO()}.` }); continue; }
       const costType = String(raw.cost_type || raw.type || "fixed").toLowerCase().trim();
       const category = String(raw.category || "").trim();
       const description = String(raw.description || raw.desc || raw.details || "").trim();
@@ -531,6 +477,297 @@ router.post("/upload/menu", authMiddleware, handleUpload, async (req, res): Prom
   res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results });
 });
 
+router.post("/upload/sales-invoices", authMiddleware, handleUpload, async (req, res): Promise<void> => {
+  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+
+  const { rows, error } = safeParseFile(req.file.buffer);
+  if (error) { res.status(400).json({ error }); return; }
+  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
+
+  const menuItems = await db.select().from(menuItemsTable);
+  const menuByName = new Map(menuItems.map(m => [m.name.toLowerCase().trim(), m]));
+  const menuById = new Map(menuItems.map(m => [m.id, m]));
+
+  const grouped = new Map<string, {
+    salesDate: string; invoiceNo: string; invoiceTime: string; orderType: string;
+    customerName: string; paymentMode: string; gstInclusive: boolean; totalDiscount: number;
+    lines: { menuItemId: number; menuItemName: string; menuItemCode: string; fixedPrice: number; quantity: number; gstPercent: number; rowIndex: number }[];
+  }>();
+  const results: { row: number; status: string; error?: string; data?: any }[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = normalizeRow(rows[i]);
+    try {
+      const salesDate = toDateStr(raw.date || raw.sales_date || raw.invoice_date);
+      if (isFutureDate(salesDate)) { results.push({ row: i + 2, status: "error", error: `Date cannot be in the future (${salesDate}). Today is ${getTodayISO()}.` }); continue; }
+      const invoiceNo = String(raw.invoice_no || raw.invoice_number || raw.invoice || "").trim();
+      const invoiceTime = String(raw.time || raw.invoice_time || "").trim();
+      const orderType = String(raw.order_type || raw.type || "dine-in").toLowerCase().replace(/\s+/g, "-");
+      const customerName = String(raw.customer || raw.customer_name || "").trim();
+      const paymentMode = String(raw.payment_mode || raw.payment || "cash").toLowerCase().trim();
+      const gstInclusive = String(raw.gst_inclusive || raw.gst_incl || "true").toLowerCase() !== "false";
+      const totalDiscount = toNum(raw.discount || raw.total_discount || 0);
+
+      const itemName = String(raw.item || raw.menu_item || raw.item_name || raw.menu_item_name || "").trim();
+      const itemId = toNum(raw.item_id || raw.menu_item_id);
+      const quantity = toNum(raw.quantity || raw.qty);
+      const gstPercent = toNum(raw.gst_percent || raw.gst || raw.tax || 5);
+
+      let menuItem = itemId ? menuById.get(itemId) : undefined;
+      if (!menuItem && itemName) menuItem = menuByName.get(itemName.toLowerCase());
+      if (!menuItem) { results.push({ row: i + 2, status: "error", error: `Menu item not found: "${itemName || itemId}"` }); continue; }
+      if (quantity <= 0) { results.push({ row: i + 2, status: "error", error: "Quantity must be > 0" }); continue; }
+
+      const groupKey = `${salesDate}_${invoiceNo || `row${i}`}`;
+      if (!grouped.has(groupKey)) {
+        grouped.set(groupKey, { salesDate, invoiceNo, invoiceTime, orderType, customerName, paymentMode, gstInclusive, totalDiscount, lines: [] });
+      }
+      grouped.get(groupKey)!.lines.push({
+        menuItemId: menuItem.id, menuItemName: menuItem.name, menuItemCode: menuItem.code || '',
+        fixedPrice: menuItem.sellingPrice, quantity, gstPercent, rowIndex: i + 2,
+      });
+    } catch (e: any) {
+      logger.error({ err: e, row: i + 2 }, "Sales invoice upload row parse error");
+      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
+    }
+  }
+
+  let successCount = 0;
+
+  const [batch] = await db.insert(salesImportBatchesTable).values({
+    sourceType: "excel", fileName: req.file.originalname, invoiceCount: grouped.size,
+    lineCount: rows.length, successCount: 0, failedCount: 0, matchedCount: 0, mismatchedCount: 0,
+    uploadedBy: (req as any).userId,
+  }).returning();
+
+  for (const [, group] of grouped) {
+    try {
+      let grossAmount = 0;
+      for (const l of group.lines) { grossAmount += l.quantity * l.fixedPrice; }
+      const invoiceDiscount = group.totalDiscount;
+
+      const finalLines: any[] = [];
+      let totalGst = 0;
+      for (const pl of group.lines) {
+        const lineGross = pl.quantity * pl.fixedPrice;
+        const allocatedDiscount = grossAmount > 0 ? Math.round((lineGross / grossAmount) * invoiceDiscount * 100) / 100 : 0;
+        const discountedGross = lineGross - allocatedDiscount;
+        const discountedUnitPrice = pl.quantity > 0 ? discountedGross / pl.quantity : 0;
+
+        let taxableAmount: number, gstAmt: number, finalAmount: number;
+        if (group.gstInclusive) {
+          finalAmount = discountedGross;
+          taxableAmount = pl.gstPercent > 0 ? finalAmount / (1 + pl.gstPercent / 100) : finalAmount;
+          gstAmt = finalAmount - taxableAmount;
+        } else {
+          taxableAmount = discountedGross;
+          gstAmt = taxableAmount * (pl.gstPercent / 100);
+          finalAmount = taxableAmount + gstAmt;
+        }
+        totalGst += gstAmt;
+
+        finalLines.push({
+          menuItemId: pl.menuItemId, itemCodeSnapshot: pl.menuItemCode, itemNameSnapshot: pl.menuItemName,
+          quantity: pl.quantity, fixedPrice: pl.fixedPrice, grossLineAmount: Math.round(lineGross * 100) / 100,
+          lineDiscountAmount: Math.round(allocatedDiscount * 100) / 100, discountedUnitPrice: Math.round(discountedUnitPrice * 100) / 100,
+          taxableLineAmount: Math.round(taxableAmount * 100) / 100, gstPercent: pl.gstPercent,
+          gstAmount: Math.round(gstAmt * 100) / 100, finalLineAmount: Math.round(finalAmount * 100) / 100,
+        });
+      }
+
+      const lineFinalTotal = finalLines.reduce((s, l) => s + l.finalLineAmount, 0);
+      const taxableTotal = finalLines.reduce((s, l) => s + l.taxableLineAmount, 0);
+      const invNo = group.invoiceNo || `XL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+
+      await db.transaction(async (tx) => {
+        const [invoice] = await tx.insert(salesInvoicesTable).values({
+          salesDate: group.salesDate, invoiceNo: invNo, invoiceTime: group.invoiceTime || null,
+          sourceType: "excel", orderType: group.orderType, customerName: group.customerName || null,
+          grossAmount: Math.round(grossAmount * 100) / 100, totalDiscount: Math.round(invoiceDiscount * 100) / 100,
+          taxableAmount: Math.round(taxableTotal * 100) / 100, gstAmount: Math.round(totalGst * 100) / 100,
+          finalAmount: Math.round(lineFinalTotal * 100) / 100, paymentMode: group.paymentMode,
+          importBatchId: batch.id, matchStatus: "matched", matchDifference: 0,
+          createdBy: (req as any).userId,
+        }).returning();
+
+        for (const fl of finalLines) {
+          await tx.insert(salesInvoiceLinesTable).values({ invoiceId: invoice.id, ...fl });
+        }
+      });
+
+      for (const l of group.lines) {
+        successCount++;
+        results.push({ row: l.rowIndex, status: "success", data: { invoiceNo: invNo, item: l.menuItemName, qty: l.quantity } });
+      }
+    } catch (e: any) {
+      logger.error({ err: e }, "Sales invoice upload transaction error");
+      for (const l of group.lines) {
+        results.push({ row: l.rowIndex, status: "error", error: safeErrorMessage(e) });
+      }
+    }
+  }
+
+  await db.update(salesImportBatchesTable).set({
+    successCount, failedCount: rows.length - successCount,
+  }).where(eq(salesImportBatchesTable.id, batch.id));
+
+  await createAuditLog("sales_invoices", batch.id, "import", null, { source: "excel", file: req.file.originalname, total: rows.length, success: successCount });
+  res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results });
+});
+
+router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): Promise<void> => {
+  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+
+  const { rows, error } = safeParseFile(req.file.buffer);
+  if (error) { res.status(400).json({ error }); return; }
+  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
+
+  const menuItems = await db.select().from(menuItemsTable);
+  const menuByName = new Map(menuItems.map(m => [m.name.toLowerCase().trim(), m]));
+  const allCategories = await db.select().from(categoriesTable);
+  const categoryByName = new Map(allCategories.map(c => [c.name.toLowerCase().trim(), c]));
+  const autoCreated: string[] = [];
+
+  const grouped = new Map<string, {
+    salesDate: string; invoiceNo: string; invoiceTime: string; orderType: string;
+    customerName: string; paymentMode: string; totalDiscount: number;
+    lines: { menuItemId: number; menuItemName: string; menuItemCode: string; fixedPrice: number; quantity: number; gstPercent: number; rowIndex: number }[];
+  }>();
+  const results: { row: number; status: string; error?: string; data?: any }[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = normalizeRow(rows[i]);
+    try {
+      const salesDate = toDateStr(raw.date || raw.order_date || raw.sales_date);
+      if (isFutureDate(salesDate)) { results.push({ row: i + 2, status: "error", error: `Date cannot be in the future (${salesDate}). Today is ${getTodayISO()}.` }); continue; }
+      const invoiceNo = String(raw.order_id || raw.invoice_no || raw.order_no || raw.invoice || "").trim();
+      const invoiceTime = String(raw.time || raw.order_time || "").trim();
+      const orderType = String(raw.order_type || raw.type || "dine-in").toLowerCase().replace(/\s+/g, "-");
+      const customerName = String(raw.customer || raw.customer_name || "").trim();
+      const paymentMode = String(raw.payment_mode || raw.payment || "cash").toLowerCase().trim();
+      const totalDiscount = toNum(raw.discount || raw.total_discount || 0);
+
+      const ppItemName = String(raw.item || raw.item_name || raw.menu_item || "").trim();
+      const ppCategoryName = String(raw.category || raw.category_name || "").trim();
+      const quantity = toNum(raw.quantity || raw.qty);
+      const price = toNum(raw.price || raw.rate || raw.selling_price || 0);
+      const gstPercent = toNum(raw.gst_percent || raw.gst || raw.tax || 5);
+
+      if (!ppItemName) { results.push({ row: i + 2, status: "error", error: "Item name is required" }); continue; }
+      if (quantity <= 0) { results.push({ row: i + 2, status: "error", error: "Quantity must be > 0" }); continue; }
+
+      let menuItem = menuByName.get(ppItemName.toLowerCase().trim());
+
+      if (!menuItem) {
+        let categoryId: number | null = null;
+        if (ppCategoryName) {
+          let category = categoryByName.get(ppCategoryName.toLowerCase().trim());
+          if (!category) {
+            const [newCat] = await db.insert(categoriesTable).values({ name: ppCategoryName, type: "menu" }).returning();
+            category = newCat;
+            categoryByName.set(ppCategoryName.toLowerCase().trim(), category);
+            autoCreated.push(`Category: ${ppCategoryName}`);
+          }
+          categoryId = category.id;
+        }
+        const code = await generateCode("PP", "menu_items");
+        const [newItem] = await db.insert(menuItemsTable).values({
+          code, name: ppItemName, categoryId, sellingPrice: price, active: true,
+        }).returning();
+        menuItem = newItem;
+        menuByName.set(ppItemName.toLowerCase().trim(), menuItem);
+        autoCreated.push(`Menu Item: ${ppItemName} (${code}) @ ₹${price}`);
+      }
+
+      const groupKey = `${salesDate}_${invoiceNo || `row${i}`}`;
+      if (!grouped.has(groupKey)) {
+        grouped.set(groupKey, { salesDate, invoiceNo, invoiceTime, orderType, customerName, paymentMode, totalDiscount, lines: [] });
+      }
+      grouped.get(groupKey)!.lines.push({
+        menuItemId: menuItem.id, menuItemName: menuItem.name, menuItemCode: menuItem.code || '',
+        fixedPrice: menuItem.sellingPrice, quantity, gstPercent, rowIndex: i + 2,
+      });
+    } catch (e: any) {
+      logger.error({ err: e, row: i + 2 }, "Petpooja upload row parse error");
+      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
+    }
+  }
+
+  let successCount = 0;
+
+  const [batch] = await db.insert(salesImportBatchesTable).values({
+    sourceType: "petpooja", fileName: req.file.originalname, invoiceCount: grouped.size,
+    lineCount: rows.length, successCount: 0, failedCount: 0, matchedCount: 0, mismatchedCount: 0,
+    uploadedBy: (req as any).userId,
+  }).returning();
+
+  for (const [, group] of grouped) {
+    try {
+      let grossAmount = 0;
+      for (const l of group.lines) { grossAmount += l.quantity * l.fixedPrice; }
+      const invoiceDiscount = group.totalDiscount;
+
+      const finalLines: any[] = [];
+      let totalGst = 0;
+      for (const pl of group.lines) {
+        const lineGross = pl.quantity * pl.fixedPrice;
+        const allocatedDiscount = grossAmount > 0 ? Math.round((lineGross / grossAmount) * invoiceDiscount * 100) / 100 : 0;
+        const discountedGross = lineGross - allocatedDiscount;
+        const discountedUnitPrice = pl.quantity > 0 ? discountedGross / pl.quantity : 0;
+        const taxableAmount = discountedGross;
+        const gstAmt = taxableAmount * (pl.gstPercent / 100);
+        const finalAmount = taxableAmount + gstAmt;
+        totalGst += gstAmt;
+
+        finalLines.push({
+          menuItemId: pl.menuItemId, itemCodeSnapshot: pl.menuItemCode, itemNameSnapshot: pl.menuItemName,
+          quantity: pl.quantity, fixedPrice: pl.fixedPrice, grossLineAmount: Math.round(lineGross * 100) / 100,
+          lineDiscountAmount: Math.round(allocatedDiscount * 100) / 100, discountedUnitPrice: Math.round(discountedUnitPrice * 100) / 100,
+          taxableLineAmount: Math.round(taxableAmount * 100) / 100, gstPercent: pl.gstPercent,
+          gstAmount: Math.round(gstAmt * 100) / 100, finalLineAmount: Math.round(finalAmount * 100) / 100,
+        });
+      }
+
+      const lineFinalTotal = finalLines.reduce((s, l) => s + l.finalLineAmount, 0);
+      const taxableTotal = finalLines.reduce((s, l) => s + l.taxableLineAmount, 0);
+      const invNo = group.invoiceNo ? `PP-${group.invoiceNo}` : `PP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+
+      await db.transaction(async (tx) => {
+        const [invoice] = await tx.insert(salesInvoicesTable).values({
+          salesDate: group.salesDate, invoiceNo: invNo, invoiceTime: group.invoiceTime || null,
+          sourceType: "petpooja", orderType: group.orderType, customerName: group.customerName || null,
+          grossAmount: Math.round(grossAmount * 100) / 100, totalDiscount: Math.round(invoiceDiscount * 100) / 100,
+          taxableAmount: Math.round(taxableTotal * 100) / 100, gstAmount: Math.round(totalGst * 100) / 100,
+          finalAmount: Math.round(lineFinalTotal * 100) / 100, paymentMode: group.paymentMode,
+          importBatchId: batch.id, matchStatus: "matched", matchDifference: 0,
+          createdBy: (req as any).userId,
+        }).returning();
+
+        for (const fl of finalLines) {
+          await tx.insert(salesInvoiceLinesTable).values({ invoiceId: invoice.id, ...fl });
+        }
+      });
+
+      for (const l of group.lines) {
+        successCount++;
+        results.push({ row: l.rowIndex, status: "success", data: { invoiceNo: invNo, item: l.menuItemName, qty: l.quantity } });
+      }
+    } catch (e: any) {
+      logger.error({ err: e }, "Petpooja upload transaction error");
+      for (const l of group.lines) {
+        results.push({ row: l.rowIndex, status: "error", error: safeErrorMessage(e) });
+      }
+    }
+  }
+
+  await db.update(salesImportBatchesTable).set({
+    successCount, failedCount: rows.length - successCount,
+  }).where(eq(salesImportBatchesTable.id, batch.id));
+
+  await createAuditLog("sales_invoices", batch.id, "import", null, { source: "petpooja", file: req.file.originalname, total: rows.length, success: successCount, autoCreated });
+  res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results, autoCreated: autoCreated.length > 0 ? autoCreated : undefined });
+});
+
 router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<void> => {
   const { type } = req.params;
   let headers: string[];
@@ -538,11 +775,6 @@ router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<v
   let sheetName: string;
 
   switch (type) {
-    case "sales":
-      sheetName = "Sales";
-      headers = ["Date", "Item", "Quantity", "Price", "Discount", "Channel", "Notes"];
-      sampleRow = ["2026-03-30", "Cappuccino", 10, 180, 0, "DINE_IN", "Morning batch"];
-      break;
     case "purchases":
       sheetName = "Purchases";
       headers = ["Date", "Vendor", "Ingredient", "Quantity", "UOM", "Rate", "Tax_Percent", "Invoice", "Payment_Mode"];
@@ -568,8 +800,18 @@ router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<v
       res.send(buf2);
       return;
     }
+    case "sales-invoices":
+      sheetName = "Sales_Invoices";
+      headers = ["Date", "Invoice_No", "Time", "Order_Type", "Customer", "Item", "Quantity", "GST_Percent", "Discount", "Payment_Mode", "GST_Inclusive"];
+      sampleRow = ["2026-03-30", "INV-001", "10:30", "dine-in", "John", "Cappuccino", 2, 5, 0, "cash", "true"];
+      break;
+    case "petpooja":
+      sheetName = "Petpooja_Sales";
+      headers = ["Date", "Order_ID", "Time", "Order_Type", "Customer", "Item", "Category", "Price", "Quantity", "GST_Percent", "Discount", "Payment_Mode"];
+      sampleRow = ["2026-03-30", "PP-1234", "10:30", "dine-in", "Walk-in", "Cappuccino", "Beverages", 180, 2, 5, 0, "cash"];
+      break;
     default:
-      res.status(400).json({ error: "Invalid template type. Use: sales, purchases, expenses, or menu" });
+      res.status(400).json({ error: "Invalid template type. Use: purchases, expenses, menu, sales-invoices, or petpooja" });
       return;
   }
 

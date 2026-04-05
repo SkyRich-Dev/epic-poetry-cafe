@@ -4,6 +4,7 @@ import { db, pettyCashLedgerTable, expensesTable, systemConfigTable } from "@wor
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
+import { validateNotFutureDate } from "../lib/dateValidation";
 
 const router: IRouter = Router();
 
@@ -89,6 +90,8 @@ router.post("/petty-cash", authMiddleware, async (req, res): Promise<void> => {
     res.status(400).json({ error: "transactionDate, transactionType and amount are required" });
     return;
   }
+  const dateErr = validateNotFutureDate(transactionDate, "Transaction date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
   const parsedAmount = Number(amount);
   if (parsedAmount <= 0) { res.status(400).json({ error: "Amount must be positive" }); return; }
@@ -149,6 +152,50 @@ router.post("/petty-cash", authMiddleware, async (req, res): Promise<void> => {
 
   await createAuditLog("petty_cash", txn.id, "create", null, txn);
   res.status(201).json(txn);
+});
+
+router.patch("/petty-cash/:id", authMiddleware, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [existing] = await db.select().from(pettyCashLedgerTable).where(eq(pettyCashLedgerTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  const { transactionDate, amount, method, counterpartyName, category, description } = req.body;
+  if (transactionDate) { const dateErr = validateNotFutureDate(transactionDate, "Transaction date"); if (dateErr) { res.status(400).json({ error: dateErr }); return; } }
+  const updates: any = {};
+  if (transactionDate !== undefined) updates.transactionDate = transactionDate;
+  if (amount !== undefined) {
+    const a = Number(amount);
+    if (a <= 0) { res.status(400).json({ error: "Amount must be positive" }); return; }
+    if (existing.transactionType === "expense") {
+      const balance = await getCurrentBalance();
+      const headroom = balance + existing.amount;
+      if (headroom < a) { res.status(400).json({ error: `Insufficient petty cash balance. Available: ${headroom.toFixed(2)}` }); return; }
+    }
+    updates.amount = a;
+  }
+  if (method !== undefined) updates.method = method || null;
+  if (counterpartyName !== undefined) updates.counterpartyName = counterpartyName || null;
+  if (category !== undefined) updates.category = category || null;
+  if (description !== undefined) updates.description = description || null;
+
+  if (Object.keys(updates).length === 0) { res.json(existing); return; }
+
+  const [updated] = await db.update(pettyCashLedgerTable).set(updates).where(eq(pettyCashLedgerTable.id, id)).returning();
+
+  if (existing.linkedExpenseId && (updates.amount !== undefined || updates.transactionDate !== undefined || updates.description !== undefined || updates.category !== undefined)) {
+    const expenseUpdates: any = {};
+    if (updates.amount !== undefined) { expenseUpdates.amount = updates.amount; expenseUpdates.totalAmount = updates.amount; }
+    if (updates.transactionDate !== undefined) expenseUpdates.expenseDate = updates.transactionDate;
+    if (updates.description !== undefined || updates.category !== undefined) expenseUpdates.description = updates.description || updates.category || existing.description || existing.category || "Petty Cash Expense";
+    if (Object.keys(expenseUpdates).length > 0) {
+      await db.update(expensesTable).set(expenseUpdates).where(eq(expensesTable.id, existing.linkedExpenseId));
+    }
+  }
+
+  await createAuditLog("petty_cash", id, "update", existing, updated);
+  res.json(updated);
 });
 
 router.delete("/petty-cash/:id", authMiddleware, async (req, res): Promise<void> => {

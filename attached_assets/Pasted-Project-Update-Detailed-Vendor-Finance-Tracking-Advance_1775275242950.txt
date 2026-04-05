@@ -1,0 +1,891 @@
+Project Update: Detailed Vendor Finance Tracking + Advanced Cafe Sales Module
+Update the existing Epic Poetry Cafe management system. This is not a separate system. It is a major update inside the existing application.
+The current system already manages:
+ingredients
+raw items
+semi-prepared items
+final menu items
+recipes/BOM
+purchases
+expenses
+inventory
+waste
+trials/R&D
+settlements
+petty cash
+costing
+reports
+dashboards
+Now update the system to add two major enhancements together:
+Enhancement 1: Detailed Vendor Page with
+purchase tracking
+bill-wise details
+pending amount
+payment done
+partial payment
+multiple payments
+payment proof
+day-to-day purchase and payment details
+vendor ledger
+overdue and aging analytics
+Enhancement 2: Advanced Cafe Sales Module with
+Petpooja import
+Excel upload
+manual entry
+invoice-based sales
+item-based sales
+invoice number
+invoice total
+item list
+fixed price
+total discount
+item-wise discount allocation
+GST
+payment mode
+invoice matching
+daily sales matching
+item total matching
+inventory consumption based on sold items
+The result must be a clear, practical, operational, and audit-safe cafe system.
+1. BUSINESS OBJECTIVE
+Build a complete operational and finance control layer so the cafe can clearly track:
+Vendor side
+how much was purchased from each vendor
+which vendor bill is unpaid
+which vendor bill is partially paid
+which vendor bill is fully paid
+what payment was made
+what proof is attached
+day-to-day purchase and payment activity
+total vendor outstanding
+Sales side
+what invoices were generated
+what items were sold in each invoice
+invoice total vs item line total
+total discount vs item-wise discount
+GST
+payment mode
+day-wise total sales
+item-wise total sales
+sales reconciliation
+inventory consumption from sold items
+2. OVERALL SYSTEM DESIGN RULES
+Keep the UI simple
+The app must remain easy for daily use by cafe staff and management.
+Keep logic strict
+All financial and sales totals must reconcile correctly.
+Keep history safe
+All records must be auditable and historical data must not break.
+No hardcoded values
+Payment modes, statuses, categories, thresholds, and settings must be configurable.
+Existing functionality must not break
+This is an update to the current system, not a rebuild.
+3. ENHANCEMENT 1 — DETAILED VENDOR PAGE
+Update the existing vendor and purchase modules to support full bill-wise vendor payable tracking.
+3.1 Vendor detail page requirements
+Create a detailed vendor page inside the existing system.
+For each vendor, show:
+Top summary cards
+total purchase value
+total paid amount
+total pending amount
+total bills count
+overdue bills count
+average payment days
+last purchase date
+last payment date
+Vendor page tabs / sections
+Overview
+Bills / Invoices
+Payments
+Purchase History
+Ledger
+Attachments
+Analytics
+This page must become the main source of truth for each vendor.
+3.2 Purchase bill / invoice tracking update
+Enhance existing purchase bills to become proper payable documents.
+Each purchase bill must store:
+purchase number
+vendor
+vendor invoice number
+bill date
+due date
+gross amount
+tax amount
+discount amount if any
+net payable amount
+paid amount
+pending amount
+payment status
+bill attachment
+remarks
+created by
+created at
+Payment status values
+unpaid
+partially_paid
+fully_paid
+overdue
+cancelled optional
+Rules
+pending amount = bill amount - total payments allocated
+payment status auto-updates
+due date passed + pending > 0 = overdue
+3.3 Vendor payment module
+Create or update a payment entry module for vendor bill payments.
+Vendor payment entry fields
+payment number auto-generated
+payment date
+vendor
+payment method
+cash
+bank transfer
+UPI
+cheque
+card
+petty cash if allowed
+adjustment
+transaction reference / UTR / cheque no
+total payment amount
+linked bill allocations
+paid by
+remarks
+payment proof attachment
+created by
+approved by optional
+created at
+updated at
+3.4 Bill-wise payment allocation
+Support:
+Case A — full payment against one bill
+Case B — partial payment against one bill
+Case C — one payment allocated across multiple bills
+The system must:
+allow allocation amount bill by bill
+block over-allocation
+block allocation to a bill from another vendor
+auto-update bill pending amount
+auto-update bill payment status
+update vendor totals
+3.5 Payment proof
+Each vendor payment must support proof upload:
+bank transfer screenshot
+UPI screenshot
+cheque scan
+signed receipt
+bank advice
+Proof must be visible:
+in payment record
+in vendor page
+in linked bill payment history
+3.6 Day-to-day vendor tracking
+Need day-wise visibility.
+Day-wise purchase tracking
+Show:
+vendor
+bill no
+bill date
+amount
+due date
+payment status
+Day-wise payment tracking
+Show:
+payment date
+vendor
+payment no
+amount
+method
+linked bills
+proof attached yes/no
+Vendor timeline
+Inside vendor page show:
+purchase created
+payment made
+proof uploaded
+bill fully settled
+overdue flag
+3.7 Vendor ledger
+Create a detailed vendor ledger.
+Ledger transaction types
+purchase bill debit
+payment credit
+adjustment debit/credit
+opening balance
+cancellation/reversal if supported
+Ledger columns
+date
+transaction type
+reference no
+description
+debit
+credit
+running balance
+status
+Logic
+purchase increases vendor payable
+payment reduces vendor payable
+adjustment changes balance accordingly
+3.8 Vendor analytics
+Inside vendor page and reports, show:
+total purchase by vendor
+total paid
+total pending
+overdue amount
+average bill value
+average payment days
+top ingredients purchased from vendor
+last 10 transactions
+month-wise purchase trend
+month-wise payment trend
+aging summary
+Aging buckets
+current
+1–7 days overdue
+8–15 days overdue
+16–30 days overdue
+30+ days overdue
+4. ENHANCEMENT 2 — ADVANCED SALES MODULE
+Update the existing sales module to support complete invoice-based and item-based sales management.
+4.1 Sales sources
+Sales must be captured from:
+A. Petpooja
+File import first, API-ready architecture later.
+B. Excel upload
+Support invoice and line upload.
+C. Manual entry
+Allow creating invoices and item lines directly.
+All sources must flow into one unified sales structure.
+4.2 Sales module tabs
+Create two linked tabs:
+Tab 1 — Invoice-Based Sales
+View and manage invoice by invoice.
+Tab 2 — Item-Based Sales
+View and manage aggregated item-wise sales.
+These two tabs must always reconcile.
+4.3 Invoice-based sales requirements
+Each sales invoice must store:
+Invoice header
+sales date
+invoice number
+invoice time optional
+source type
+petpooja
+excel
+manual
+order type
+dine-in
+takeaway
+delivery
+swiggy
+zomato
+other
+customer name optional
+gross invoice amount
+total discount amount
+taxable amount
+total GST amount
+final invoice amount
+payment mode
+payment reference optional
+linked import batch optional
+verification status
+match status
+match difference
+created by
+created at
+updated at
+Invoice line fields
+Each invoice line must store:
+linked invoice
+item
+item code snapshot
+item name snapshot
+quantity
+fixed price
+gross line amount
+line discount amount
+discounted unit price
+taxable line amount
+GST percent
+GST amount
+final line amount
+notes
+4.4 Item-based sales tab requirements
+For a selected date/date range, show item-wise sales summary:
+item code
+item name
+total quantity sold
+fixed price
+gross sales amount
+total discount allocated
+effective discounted price per unit
+final sales amount
+GST amount
+invoice count
+average realized price
+match status with day total
+This tab may be derived from invoice lines, but must be displayed clearly as a separate operational view.
+4.5 Matching and reconciliation logic
+This is critical.
+Invoice-level matching
+For each invoice:
+sum of line final amounts = invoice final amount
+Daily invoice total matching
+For selected date:
+sum of all invoice totals = day sales total
+Item-based matching
+For selected date:
+sum of all item-based final amounts = day sales total
+Discount matching
+sum of line discounts = invoice/day total discount
+GST matching
+sum of line GST = invoice/day total GST
+Status values
+matched
+mismatched
+pending verification
+partially imported
+partially mapped
+Need configurable rounding tolerance.
+4.6 Fixed price + discount handling
+Need to support:
+fixed selling price
+item-wise discount
+invoice-level discount
+discounted unit value
+final value per item
+Logic
+Default fixed price comes from menu item price.
+If invoice-level total discount is provided but line discount is not:
+allocate discount proportionally based on line gross value.
+Formula
+line gross = qty × fixed price
+allocated line discount =
+(line gross / invoice gross) × invoice total discount
+final line amount = line gross - allocated line discount
+Store this at line level.
+4.7 GST handling
+Need invoice-level and line-level GST tracking.
+Support config:
+price inclusive of GST
+price exclusive of GST
+Store:
+taxable amount
+GST percent
+GST amount
+final amount
+Respect imported data and config settings.
+4.8 Payment mode capture
+Capture payment mode at invoice level.
+Support:
+cash
+card
+QR
+UPI
+bank transfer
+wallet
+swiggy
+zomato
+other
+Design ready for split payments later if needed, but single payment mode per invoice is acceptable initially.
+This payment mode data should later reconcile with settlement module.
+4.9 Excel upload support
+Support Excel/CSV import for:
+Invoice sheet
+Sales Date
+Invoice No
+Invoice Time
+Order Type
+Gross Amount
+Discount
+GST
+Final Amount
+Payment Mode
+Invoice Item sheet
+Invoice No
+Item Code / Item Name
+Qty
+Fixed Price
+Gross Line Amount
+Discount Amount
+Final Line Amount
+GST Amount
+Need:
+template download
+preview before import
+row validation
+duplicate detection
+error export
+partial success support
+4.10 Petpooja integration support
+Support file-based Petpooja import first.
+Capture if available:
+invoice no
+invoice date/time
+item lines
+quantity
+gross amount
+discount
+GST
+payment mode
+order type
+Need item mapping:
+Petpooja item → internal menu item
+Retain architecture ready for future API integration.
+4.11 Manual sales entry
+Allow user to manually:
+create invoice
+add item lines
+select item
+pull default fixed price
+enter qty
+enter discount if any
+calculate GST
+choose payment mode
+save and verify invoice
+4.12 Inventory consumption from sales
+Based on sold final items, inventory consumption must be calculated.
+For each sold item:
+use recipe/BOM
+calculate theoretical consumption
+include raw ingredients
+include semi-prepared items
+include packaging if configured
+Consumption modes
+Mode 1: analytical consumption only
+Used for variance and stock analysis.
+Mode 2: direct stock deduction from sales
+Keep as optional future-ready config.
+Default to analytical consumption if current system uses stock snapshot and variance.
+5. DATABASE / MODEL UPDATES
+Update existing models and add new ones.
+5.1 Vendor side models
+Vendor
+Enhance if needed:
+vendor code
+name
+category
+contact person
+phone
+email
+address
+payment terms
+credit days
+active status
+notes
+Purchase bill update
+Ensure fields:
+vendor invoice number
+bill date
+due date
+bill amount
+paid amount
+pending amount
+payment status
+bill attachment
+last payment date
+VendorPayment
+id
+payment_no
+vendor
+payment_date
+payment_method
+transaction_reference
+total_amount
+remarks
+payment_proof
+created_by
+approved_by
+created_at
+updated_at
+VendorPaymentAllocation
+id
+vendor_payment
+purchase_bill
+allocated_amount
+created_at
+updated_at
+Vendor ledger
+Either compute dynamically or store ledger entries.
+If storing:
+vendor
+transaction_date
+transaction_type
+reference_type
+reference_id
+debit
+credit
+running_balance
+remarks
+5.2 Sales side models
+SalesInvoice
+id
+sales_date
+invoice_no
+invoice_time
+source_type
+order_type
+customer_name
+gross_amount
+total_discount
+taxable_amount
+gst_amount
+final_amount
+payment_mode
+payment_reference
+import_batch_id
+match_status
+match_difference
+verification_status
+created_by
+updated_by
+created_at
+updated_at
+SalesInvoiceLine
+id
+invoice
+item
+item_code_snapshot
+item_name_snapshot
+qty
+fixed_price
+gross_line_amount
+line_discount_amount
+discounted_unit_price
+taxable_line_amount
+gst_percent
+gst_amount
+final_line_amount
+created_at
+updated_at
+SalesImportBatch
+Enhance with:
+source_type
+uploaded_file
+invoice_count
+line_count
+success_count
+failed_count
+matched_count
+mismatched_count
+validation_report_file
+uploaded_by
+created_at
+SalesDailySummary optional
+sales_date
+total_invoices
+total_gross
+total_discount
+total_gst
+total_final_sales
+total_item_sales
+total_difference
+status
+6. BACKEND BUSINESS RULES
+6.1 Vendor rules
+pending = bill amount - allocated payments
+fully paid when pending = 0
+partially paid when 0 < pending < bill amount
+overdue when due date passed and pending > 0
+allocation cannot exceed bill pending amount
+payment must belong to same vendor
+proof attachment supported
+payment reversal must safely restore bill pending amounts
+6.2 Sales rules
+invoice no uniqueness rule per date/source as configured
+qty > 0
+fixed price >= 0
+line discount cannot exceed line gross
+invoice total must match line final totals within configured tolerance
+item-based daily totals must match invoice totals
+duplicate imports must be blocked or warned
+imported item must map to internal item
+GST calculations must be consistent with inclusive/exclusive setting
+7. API REQUIREMENTS
+Build/update APIs for both enhancements.
+7.1 Vendor APIs
+vendor detail summary
+vendor bills list
+vendor bill detail
+vendor payment create
+vendor payment update
+vendor payment allocation
+vendor payment history
+vendor ledger
+vendor aging report
+vendor purchase summary
+vendor day-wise activity
+vendor analytics
+7.2 Sales APIs
+create invoice
+update invoice
+get invoice detail
+list invoices
+invoice verification
+mismatch list
+create/update/delete invoice lines
+item-wise aggregated sales
+date-wise sales summary
+discount analysis
+GST analysis
+payment mode sales report
+sales matching report
+theoretical consumption report
+Excel upload validation/import
+Petpooja upload validation/import
+import history
+8. FRONTEND UI UPDATE
+Update the frontend in a simple but strong way.
+8.1 Vendor list page
+Add columns:
+total purchase
+total paid
+pending
+overdue
+last purchase date
+last payment date
+Add filters:
+active/inactive
+with pending dues
+overdue vendors
+high-value vendors
+8.2 Vendor detail page
+Create tabs:
+Overview
+summary cards
+outstanding summary
+latest activity
+Bills / Invoices
+bill no
+bill date
+due date
+amount
+paid
+pending
+status
+attachment
+actions
+Payments
+payment no
+payment date
+method
+amount
+proof
+linked bills
+Purchase History
+day-wise purchases
+Ledger
+debit/credit/running balance
+Analytics
+charts and summaries
+8.3 Vendor payment entry screen
+Need:
+select vendor
+fetch unpaid/partial bills
+enter payment amount
+allocate to bills
+enter payment method
+enter reference number
+upload proof
+save
+8.4 Sales module UI
+Add two tabs:
+Invoice-Based Sales
+Show:
+invoice list
+filters
+import buttons
+manual add invoice
+totals and match status
+Item-Based Sales
+Show:
+item-wise sales table
+qty sold
+fixed rate
+discount
+final amount
+GST
+invoice count
+match status
+8.5 Invoice detail page
+Show:
+Header summary
+invoice gross
+total discount
+GST
+final amount
+payment mode
+match status
+difference
+Item lines
+item
+qty
+fixed price
+gross
+discount
+discounted unit price
+GST
+final amount
+Footer
+line totals
+match verification
+8.6 Import screens
+Support:
+Petpooja import
+Excel upload
+preview
+item mapping
+validation errors
+confirm import
+import history
+9. REPORTS REQUIRED
+All reports must support:
+daily
+weekly
+monthly
+custom date range
+vendor filter where relevant
+item filter where relevant
+9.1 Vendor reports
+vendor summary report
+vendor bill report
+vendor payment report
+vendor ledger report
+vendor aging report
+day-to-day vendor purchase report
+day-to-day vendor payment report
+9.2 Sales reports
+invoice-based sales report
+item-based sales report
+sales matching report
+discount analysis report
+GST report
+payment mode sales report
+sales-based consumption report
+10. DASHBOARD ADDITIONS
+Add the following cards and charts.
+10.1 Vendor dashboard additions
+total vendor payable
+overdue payable
+bills due today
+payments made today
+top 5 vendors by purchase
+top 5 vendors by pending
+10.2 Sales dashboard additions
+total invoices today
+total day sales
+total discount
+total GST
+invoice mismatch count
+item/day mismatch amount
+top sold items
+top discounted items
+payment mode split
+sales-based theoretical consumption summary
+11. AUDIT LOGS
+Track:
+vendor updates
+purchase bill updates
+bill attachment uploads
+vendor payment creation/update/delete
+payment proof uploads
+bill allocations
+invoice create/update/delete
+invoice line updates
+import actions
+mapping updates
+sales verification changes
+reconciliation status changes
+Audit logs must store:
+module
+action
+old value
+new value
+user
+timestamp
+12. VALIDATION & SECURITY
+Implement strong validation and permission control.
+Validate:
+payment allocation cannot exceed pending
+vendor mismatch blocked
+duplicate invoice import warning/block
+invoice total mismatch clearly shown
+invalid GST/discount blocked
+negative amounts blocked
+secure file upload for bill/payment proofs
+unauthorized users cannot modify finance records
+report exports must not expose unauthorized data
+13. TESTING SCENARIOS
+Test all these cases after implementation.
+13.1 Vendor scenarios
+Scenario A
+Create vendor and 3 bills:
+one unpaid
+one partial
+one full paid
+Verify totals and statuses.
+Scenario B
+Create partial payment against one bill.
+Verify pending, status, vendor totals, ledger.
+Scenario C
+One payment allocated across multiple bills.
+Verify allocation and running balances.
+Scenario D
+Upload payment proof.
+Verify it appears in payment and vendor page.
+Scenario E
+Generate aging report.
+Verify overdue bucket logic.
+13.2 Sales scenarios
+Scenario A
+Manual invoice with 3 line items.
+Verify gross, discount, GST, final total, match status.
+Scenario B
+Invoice-level discount only.
+Verify proportional line discount allocation.
+Scenario C
+Excel import with invoice sheet + line sheet.
+Verify linkage, duplicates, mismatch handling.
+Scenario D
+Petpooja import.
+Verify invoice mapping, line mapping, totals, payment mode.
+Scenario E
+Item-based sales summary.
+Verify item total final amount = day invoice total.
+Scenario F
+Sales-based theoretical inventory consumption.
+Verify recipe-based consumption values.
+Scenario G
+Mismatched invoice.
+Verify system flags mismatch and shows difference.
+14. PERFORMANCE AND CODE QUALITY
+keep all finance and reconciliation logic in backend services
+avoid duplicated formula logic in frontend
+use transactions for payment allocation and invoice save operations
+optimize list and report queries
+keep code modular
+ensure backward compatibility
+keep migrations safe
+preserve old data
+15. FINAL REQUIREMENT STATEMENT
+The existing Epic Poetry Cafe system shall be updated to provide:
+Detailed Vendor Finance Control
+A vendor detail page where users can track vendor-wise purchases, bill-wise payable amounts, payment history, payment proofs, pending and paid status, day-to-day purchase/payment records, vendor ledger, and overdue aging analytics.
+Advanced Sales Control
+A sales module that supports invoice-based and item-based sales capture from Petpooja, Excel upload, and manual entry. The system shall store invoice number, invoice total, item list, fixed item price, total discount, item-wise discount allocation, GST, and payment mode. It shall reconcile invoice totals with item line totals and item-based daily sales totals, and compute sales-based theoretical inventory consumption using menu recipes.
+16. FINAL INSTRUCTION
+Now update the existing Epic Poetry Cafe system to implement both enhancements fully across:
+backend models
+migrations
+services
+APIs
+frontend pages
+forms
+import flows
+reports
+dashboards
+validations
+audit logs
+tests
+Keep the UI simple for daily cafe operations, but make the financial, sales, and reconciliation logic detailed, strict, and audit-safe.

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, menuItemsTable, recipeLinesTable, categoriesTable, ingredientsTable, systemConfigTable } from "@workspace/db";
+import { db, menuItemsTable, recipeLinesTable, categoriesTable, ingredientsTable, systemConfigTable, salesInvoiceLinesTable } from "@workspace/db";
 import { ListMenuItemsResponse, CreateMenuItemBody, GetMenuItemParams, UpdateMenuItemParams, UpdateMenuItemBody, GetRecipeParams, SaveRecipeParams, SaveRecipeBody, GetMenuItemCostingParams } from "@workspace/api-zod";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
@@ -177,10 +177,19 @@ router.delete("/menu-items/:id", authMiddleware, async (req, res): Promise<void>
   const [existing] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, params.data.id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
-  await db.delete(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, params.data.id));
-  const [item] = await db.delete(menuItemsTable).where(eq(menuItemsTable.id, params.data.id)).returning();
-  await createAuditLog("menu_items", item.id, "delete", item, null);
-  res.json({ success: true });
+
+  const [usedInInvoice] = await db.select({ id: salesInvoiceLinesTable.id }).from(salesInvoiceLinesTable).where(eq(salesInvoiceLinesTable.menuItemId, params.data.id)).limit(1);
+  if (usedInInvoice) { res.status(400).json({ error: "Cannot delete: this menu item has sales invoice records. Deactivate it instead." }); return; }
+
+  try {
+    await db.delete(recipeLinesTable).where(eq(recipeLinesTable.menuItemId, params.data.id));
+    const [item] = await db.delete(menuItemsTable).where(eq(menuItemsTable.id, params.data.id)).returning();
+    await createAuditLog("menu_items", item.id, "delete", item, null);
+    res.json({ success: true });
+  } catch (e: any) {
+    if (e.code === '23503') { res.status(400).json({ error: "Cannot delete: this menu item is referenced by other records." }); return; }
+    throw e;
+  }
 });
 
 router.patch("/menu-items/:id/verify", authMiddleware, adminOnly, async (req, res): Promise<void> => {

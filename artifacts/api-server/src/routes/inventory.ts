@@ -2,8 +2,9 @@ import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, ingredientsTable, stockSnapshotsTable, stockAdjustmentsTable, purchaseLinesTable, purchasesTable, wasteEntriesTable } from "@workspace/db";
 import { SaveStockSnapshotBody, CreateStockAdjustmentBody, ListStockSnapshotsQueryParams } from "@workspace/api-zod";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
+import { validateNotFutureDate } from "../lib/dateValidation";
 
 const router: IRouter = Router();
 
@@ -64,9 +65,12 @@ router.get("/inventory/stock-snapshots", async (req, res): Promise<void> => {
   res.json(snapshots);
 });
 
-router.post("/inventory/stock-snapshots", authMiddleware, async (req, res): Promise<void> => {
+router.post("/inventory/stock-snapshots", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const parsed = SaveStockSnapshotBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const dateErr = validateNotFutureDate(parsed.data.snapshotDate, "Snapshot date");
+  if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
   await db.delete(stockSnapshotsTable).where(eq(stockSnapshotsTable.snapshotDate, parsed.data.snapshotDate));
 
@@ -96,7 +100,7 @@ router.post("/inventory/stock-snapshots", authMiddleware, async (req, res): Prom
   res.json(results);
 });
 
-router.post("/inventory/adjustments", authMiddleware, async (req, res): Promise<void> => {
+router.post("/inventory/adjustments", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const parsed = CreateStockAdjustmentBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
@@ -104,7 +108,9 @@ router.post("/inventory/adjustments", authMiddleware, async (req, res): Promise<
   if (!ing) { res.status(404).json({ error: "Ingredient not found" }); return; }
 
   const qtyChange = parsed.data.adjustmentType === "increase" ? parsed.data.quantity : -parsed.data.quantity;
-  await db.update(ingredientsTable).set({ currentStock: ing.currentStock + qtyChange }).where(eq(ingredientsTable.id, parsed.data.ingredientId));
+  const newStock = ing.currentStock + qtyChange;
+  if (newStock < 0) { res.status(400).json({ error: `Adjustment would result in negative stock (${newStock}). Current stock: ${ing.currentStock}` }); return; }
+  await db.update(ingredientsTable).set({ currentStock: newStock }).where(eq(ingredientsTable.id, parsed.data.ingredientId));
 
   const [adj] = await db.insert(stockAdjustmentsTable).values(parsed.data).returning();
   await createAuditLog("inventory", adj.id, "adjustment", null, adj);

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, doublePrecision, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, doublePrecision, timestamp, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { categoriesTable } from "./categories";
@@ -20,8 +20,9 @@ export const trialsTable = pgTable("trials", {
 
 export const trialVersionsTable = pgTable("trial_versions", {
   id: serial("id").primaryKey(),
-  trialId: integer("trial_id").notNull().references(() => trialsTable.id),
+  trialId: integer("trial_id").notNull().references(() => trialsTable.id, { onDelete: "cascade" }),
   versionNumber: integer("version_number").notNull(),
+  trialDate: date("trial_date").notNull().defaultNow(),
   batchSize: doublePrecision("batch_size").notNull(),
   yieldQty: doublePrecision("yield_qty").notNull(),
   yieldUom: text("yield_uom").notNull(),
@@ -33,12 +34,13 @@ export const trialVersionsTable = pgTable("trial_versions", {
   appearanceScore: doublePrecision("appearance_score"),
   consistencyScore: doublePrecision("consistency_score"),
   notes: text("notes"),
+  inventoryDeducted: integer("inventory_deducted").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const trialIngredientLinesTable = pgTable("trial_ingredient_lines", {
   id: serial("id").primaryKey(),
-  trialVersionId: integer("trial_version_id").notNull().references(() => trialVersionsTable.id),
+  trialVersionId: integer("trial_version_id").notNull().references(() => trialVersionsTable.id, { onDelete: "cascade" }),
   ingredientId: integer("ingredient_id").notNull().references(() => ingredientsTable.id),
   plannedQty: doublePrecision("planned_qty").notNull(),
   actualQty: doublePrecision("actual_qty").notNull(),

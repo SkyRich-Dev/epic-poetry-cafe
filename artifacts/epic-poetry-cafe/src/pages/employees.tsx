@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
 import { PageHeader, Button, Input, Label, Modal, formatCurrency } from '../components/ui-extras';
-import { Plus, Pencil, Trash2, UserPlus, Clock, Users, CalendarDays, Briefcase, IndianRupee } from 'lucide-react';
+import { Plus, Pencil, Trash2, UserPlus, Clock, Users, CalendarDays, Briefcase, IndianRupee, CheckCircle2, Circle, Upload, ExternalLink, Settings2, Info } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -21,7 +21,10 @@ type SalaryRecord = {
   id: number; employeeId: number; employeeName: string; employeeCode: string;
   month: number; year: number; baseSalary: number; totalDaysInMonth: number;
   presentDays: number; halfDays: number; paidLeaves: number; unpaidLeaves: number;
-  weekOffs: number; absentDays: number; deductions: number; netSalary: number;
+  weekOffs: number; paidWeekOffs: number; excessWeekOffs: number;
+  absentDays: number; absentPenaltyMultiplier: number;
+  deductions: number; netSalary: number;
+  paymentStatus: string; paymentProofUrl?: string | null; paidAt?: string | null; paidBy?: number | null;
 };
 
 const POSITIONS = ['Barista', 'Chef', 'Cashier', 'Waiter', 'Manager', 'Helper', 'Cleaner', 'Delivery Boy', 'Other'];
@@ -49,6 +52,10 @@ export default function EmployeesPage() {
   const [salaryMonth, setSalaryMonth] = useState(new Date().getMonth() + 1);
   const [salaryYear, setSalaryYear] = useState(new Date().getFullYear());
 
+  const [salarySettingsModal, setSalarySettingsModal] = useState(false);
+  const [salarySettings, setSalarySettings] = useState({ allowedWeekOffsPerMonth: 4, absentPenaltyMultiplier: 1 });
+  const [detailRecord, setDetailRecord] = useState<SalaryRecord | null>(null);
+
   const loadEmployees = useCallback(async () => {
     setLoading(true);
     try { const data = await apiFetch('employees'); setEmployees(data); } catch { }
@@ -63,11 +70,21 @@ export default function EmployeesPage() {
     try { const data = await apiFetch('salary'); setSalaryRecords(data); } catch { }
   }, []);
 
+  const loadConfig = useCallback(async () => {
+    try {
+      const data = await apiFetch('config');
+      setSalarySettings({
+        allowedWeekOffsPerMonth: data.allowedWeekOffsPerMonth ?? 4,
+        absentPenaltyMultiplier: data.absentPenaltyMultiplier ?? 1,
+      });
+    } catch { }
+  }, []);
+
   useEffect(() => {
     loadEmployees();
     loadShifts();
-    if (isAdmin) loadSalary();
-  }, [loadEmployees, loadShifts, loadSalary, isAdmin]);
+    if (isAdmin) { loadSalary(); loadConfig(); }
+  }, [loadEmployees, loadShifts, loadSalary, loadConfig, isAdmin]);
 
   const saveEmployee = async () => {
     if (!empForm.name || !empForm.position) { toast({ title: 'Error', description: 'Name and position required', variant: 'destructive' }); return; }
@@ -133,6 +150,48 @@ export default function EmployeesPage() {
     if (!confirm('Delete this salary record?')) return;
     await apiFetch(`salary/${id}`, { method: 'DELETE' });
     toast({ title: 'Salary record deleted' }); loadSalary();
+  };
+
+  const togglePaymentStatus = async (record: SalaryRecord) => {
+    const newStatus = record.paymentStatus === 'paid' ? 'pending' : 'paid';
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${BASE}api/salary/${record.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ paymentStatus: newStatus }),
+      });
+      toast({ title: newStatus === 'paid' ? 'Marked as paid' : 'Marked as pending' });
+      loadSalary();
+    } catch { toast({ title: 'Error updating status', variant: 'destructive' }); }
+  };
+
+  const uploadProof = async (recordId: number, file: File) => {
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${BASE}api/salary/${recordId}/upload-proof`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      toast({ title: 'Payment proof uploaded' });
+      loadSalary();
+    } catch { toast({ title: 'Error uploading proof', variant: 'destructive' }); }
+  };
+
+  const saveSalarySettings = async () => {
+    try {
+      await apiFetch('config', {
+        method: 'PATCH',
+        body: JSON.stringify(salarySettings),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      toast({ title: 'Salary settings saved' });
+      setSalarySettingsModal(false);
+    } catch { toast({ title: 'Error saving settings', variant: 'destructive' }); }
   };
 
   const filteredSalary = salaryRecords.filter(s => s.month === salaryMonth && s.year === salaryYear);
@@ -220,7 +279,7 @@ export default function EmployeesPage() {
                   {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
-              <div><Label>Monthly Salary (₹)</Label><Input type="number" value={empForm.salary} onChange={e => setEmpForm({ ...empForm, salary: e.target.value })} placeholder="0" /></div>
+              <div><Label>Monthly Salary</Label><Input type="number" value={empForm.salary} onChange={e => setEmpForm({ ...empForm, salary: e.target.value })} placeholder="0" /></div>
               <div><Label>Employment Type</Label>
                 <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" value={empForm.employmentType} onChange={e => setEmpForm({ ...empForm, employmentType: e.target.value })}>
                   <option value="full-time">Full Time</option>
@@ -305,6 +364,22 @@ export default function EmployeesPage() {
 
       {tab === 'salary' && isAdmin && (
         <div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+            <div className="flex items-start gap-3">
+              <Info size={18} className="text-blue-600 mt-0.5 shrink-0" />
+              <div className="text-sm text-blue-800">
+                <p className="font-semibold mb-1">Salary Calculation Rules</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div><span className="font-medium">Present:</span> Full day salary</div>
+                  <div><span className="font-medium">Half Day:</span> Half day salary</div>
+                  <div><span className="font-medium">Week Off:</span> Full day salary (up to limit)</div>
+                  <div><span className="font-medium">Absent:</span> No salary ({salarySettings.absentPenaltyMultiplier}x penalty)</div>
+                </div>
+                <p className="mt-1 text-xs">Allowed week-offs: <span className="font-semibold">{salarySettings.allowedWeekOffsPerMonth}/month</span>. Excess week-offs are deducted like absent days.</p>
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-3 items-end mb-4">
             <div>
               <Label>Month</Label>
@@ -317,7 +392,9 @@ export default function EmployeesPage() {
               <Input type="number" value={salaryYear} onChange={e => setSalaryYear(Number(e.target.value))} className="w-24" />
             </div>
             <Button onClick={generateSalary}><IndianRupee size={16} className="mr-2" /> Generate Salary</Button>
+            <Button variant="outline" onClick={() => setSalarySettingsModal(true)}><Settings2 size={16} className="mr-2" /> Salary Settings</Button>
           </div>
+
           <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
             <table className="w-full">
               <thead><tr className="border-b bg-muted/50">
@@ -332,13 +409,15 @@ export default function EmployeesPage() {
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Absent</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Deductions</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Net Salary</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Status</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Proof</th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Actions</th>
               </tr></thead>
               <tbody>
                 {filteredSalary.length === 0 ? (
-                  <tr><td colSpan={12} className="px-6 py-12 text-center text-muted-foreground">No salary records for {MONTHS[salaryMonth - 1]} {salaryYear}. Click "Generate Salary" to compute.</td></tr>
+                  <tr><td colSpan={14} className="px-6 py-12 text-center text-muted-foreground">No salary records for {MONTHS[salaryMonth - 1]} {salaryYear}. Click "Generate Salary" to compute.</td></tr>
                 ) : filteredSalary.map(s => (
-                  <tr key={s.id} className="border-b hover:bg-muted/30 transition-colors">
+                  <tr key={s.id} className="border-b hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setDetailRecord(s)}>
                     <td className="px-4 py-3"><div className="font-medium">{s.employeeName}</div><div className="text-xs text-muted-foreground">{s.employeeCode}</div></td>
                     <td className="px-4 py-3 text-right font-numbers">{formatCurrency(s.baseSalary)}</td>
                     <td className="px-4 py-3 text-right">{s.totalDaysInMonth}</td>
@@ -346,11 +425,53 @@ export default function EmployeesPage() {
                     <td className="px-4 py-3 text-right">{s.halfDays}</td>
                     <td className="px-4 py-3 text-right">{s.paidLeaves}</td>
                     <td className="px-4 py-3 text-right">{s.unpaidLeaves}</td>
-                    <td className="px-4 py-3 text-right">{s.weekOffs}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span>{s.paidWeekOffs || s.weekOffs}</span>
+                      {(s.excessWeekOffs || 0) > 0 && (
+                        <span className="text-red-500 text-xs ml-1">(+{s.excessWeekOffs} excess)</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right">{s.absentDays}</td>
                     <td className="px-4 py-3 text-right font-numbers text-red-600">{formatCurrency(s.deductions)}</td>
                     <td className="px-4 py-3 text-right font-numbers font-semibold text-emerald-700">{formatCurrency(s.netSalary)}</td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={() => togglePaymentStatus(s)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                          s.paymentStatus === 'paid'
+                            ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                            : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                        }`}
+                        title={s.paymentStatus === 'paid' ? 'Click to mark as pending' : 'Click to mark as paid'}
+                      >
+                        {s.paymentStatus === 'paid' ? <CheckCircle2 size={13} /> : <Circle size={13} />}
+                        {s.paymentStatus === 'paid' ? 'Paid' : 'Pending'}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
+                      {s.paymentProofUrl ? (
+                        <button
+                          onClick={async () => {
+                            const token = localStorage.getItem('token');
+                            const res = await fetch(`${BASE}api/salary/${s.id}/proof`, { headers: { 'Authorization': `Bearer ${token}` } });
+                            if (res.ok) {
+                              const blob = await res.blob();
+                              const url = URL.createObjectURL(blob);
+                              window.open(url, '_blank');
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-blue-600 hover:bg-blue-50 transition-colors"
+                        >
+                          <ExternalLink size={12} /> View
+                        </button>
+                      ) : (
+                        <label className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:bg-muted transition-colors cursor-pointer">
+                          <Upload size={12} /> Upload
+                          <input type="file" className="hidden" accept="image/*,.pdf" onChange={e => { if (e.target.files?.[0]) uploadProof(s.id, e.target.files[0]); }} />
+                        </label>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
                       <button onClick={() => deleteSalaryRecord(s.id)} className="p-1.5 rounded-lg hover:bg-red-50 transition-colors text-muted-foreground hover:text-red-600"><Trash2 size={15} /></button>
                     </td>
                   </tr>
@@ -358,6 +479,92 @@ export default function EmployeesPage() {
               </tbody>
             </table>
           </div>
+
+          <Modal isOpen={salarySettingsModal} onClose={() => setSalarySettingsModal(false)} title="Salary Calculation Settings">
+            <div className="space-y-5">
+              <div>
+                <Label>Allowed Week-Offs Per Month</Label>
+                <Input type="number" min="0" max="15" value={salarySettings.allowedWeekOffsPerMonth} onChange={e => setSalarySettings({ ...salarySettings, allowedWeekOffsPerMonth: Number(e.target.value) })} />
+                <p className="text-xs text-muted-foreground mt-1">Week-offs within this limit get full day salary. Excess week-offs are deducted like absent days.</p>
+              </div>
+              <div>
+                <Label>Absent Penalty Multiplier</Label>
+                <Input type="number" min="0" max="3" step="0.1" value={salarySettings.absentPenaltyMultiplier} onChange={e => setSalarySettings({ ...salarySettings, absentPenaltyMultiplier: Number(e.target.value) })} />
+                <p className="text-xs text-muted-foreground mt-1">1x = deduct 1 day salary per absent. 1.5x = deduct 1.5 days salary per absent. 2x = double penalty.</p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <Button onClick={saveSalarySettings} className="flex-1">Save Settings</Button>
+                <Button variant="outline" onClick={() => setSalarySettingsModal(false)} className="flex-1">Cancel</Button>
+              </div>
+            </div>
+          </Modal>
+
+          <Modal isOpen={!!detailRecord} onClose={() => setDetailRecord(null)} title={detailRecord ? `Salary Breakdown: ${detailRecord.employeeName}` : ''} maxWidth="max-w-lg">
+            {detailRecord && (() => {
+              const perDay = detailRecord.baseSalary / detailRecord.totalDaysInMonth;
+              const paidWO = detailRecord.paidWeekOffs || detailRecord.weekOffs;
+              const excessWO = detailRecord.excessWeekOffs || 0;
+              const mult = detailRecord.absentPenaltyMultiplier || 1;
+              return (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-muted/50 rounded-lg p-3">
+                      <div className="text-xs text-muted-foreground">Base Salary</div>
+                      <div className="text-lg font-semibold font-numbers">{formatCurrency(detailRecord.baseSalary)}</div>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-3">
+                      <div className="text-xs text-muted-foreground">Per Day Rate</div>
+                      <div className="text-lg font-semibold font-numbers">{formatCurrency(perDay)}</div>
+                    </div>
+                  </div>
+
+                  <div className="border rounded-lg divide-y">
+                    <div className="px-4 py-2.5 flex justify-between text-sm">
+                      <span>Present Days ({detailRecord.presentDays} days x full rate)</span>
+                      <span className="font-numbers text-emerald-700">+{formatCurrency(detailRecord.presentDays * perDay)}</span>
+                    </div>
+                    <div className="px-4 py-2.5 flex justify-between text-sm">
+                      <span>Half Days ({detailRecord.halfDays} days x half rate)</span>
+                      <span className="font-numbers text-amber-600">-{formatCurrency(detailRecord.halfDays * 0.5 * perDay)}</span>
+                    </div>
+                    <div className="px-4 py-2.5 flex justify-between text-sm">
+                      <span>Paid Week-Offs ({paidWO} days x full rate)</span>
+                      <span className="font-numbers text-emerald-700">+{formatCurrency(paidWO * perDay)}</span>
+                    </div>
+                    {excessWO > 0 && (
+                      <div className="px-4 py-2.5 flex justify-between text-sm bg-red-50">
+                        <span className="text-red-700">Excess Week-Offs ({excessWO} days x 1 day rate)</span>
+                        <span className="font-numbers text-red-600">-{formatCurrency(excessWO * perDay)}</span>
+                      </div>
+                    )}
+                    <div className="px-4 py-2.5 flex justify-between text-sm">
+                      <span>Paid Leaves ({detailRecord.paidLeaves} days)</span>
+                      <span className="font-numbers text-emerald-700">No deduction</span>
+                    </div>
+                    <div className="px-4 py-2.5 flex justify-between text-sm">
+                      <span>Unpaid Leaves ({detailRecord.unpaidLeaves} days x 1 day rate)</span>
+                      <span className="font-numbers text-red-600">-{formatCurrency(detailRecord.unpaidLeaves * perDay)}</span>
+                    </div>
+                    <div className="px-4 py-2.5 flex justify-between text-sm">
+                      <span>Absent ({detailRecord.absentDays} days x {mult}x penalty)</span>
+                      <span className="font-numbers text-red-600">-{formatCurrency(detailRecord.absentDays * mult * perDay)}</span>
+                    </div>
+                  </div>
+
+                  <div className="border-t-2 border-foreground/20 pt-3 flex justify-between items-center">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Total Deductions</div>
+                      <div className="font-semibold font-numbers text-red-600">{formatCurrency(detailRecord.deductions)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm text-muted-foreground">Net Salary</div>
+                      <div className="text-xl font-bold font-numbers text-emerald-700">{formatCurrency(detailRecord.netSalary)}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </Modal>
         </div>
       )}
     </div>
