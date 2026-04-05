@@ -3,21 +3,12 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "preinstall": "node -e \"const fs=require('node:fs'); try { fs.rmSync('yarn.lock', { force: true }); } catch {}\"",
-    "build": "npm run typecheck && npm run build --workspaces --if-present",
-    "db:push": "npm run push --workspace @workspace/db",
-    "dev:api": "npm run dev --workspace @workspace/api-server",
-    "dev:web": "npm run dev --workspace @workspace/epic-poetry-cafe",
+    "db:push": "pnpm --filter @workspace/db run push",
+    "dev:api": "pnpm --filter @workspace/api-server run dev",
+    "dev:web": "pnpm --filter @workspace/epic-poetry-cafe run dev",
     "typecheck:libs": "tsc --build",
-    "typecheck": "npm run typecheck:libs && npm run typecheck --workspaces --if-present"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r run typecheck"
   },
-  "packageManager": "npm@10.9.0",
-  "workspaces": [
-    "artifacts/*",
-    "lib/*",
-    "lib/integrations/*",
-    "scripts"
-  ],
   "private": true,
   "devDependencies": {
     "prettier": "^3.8.1",

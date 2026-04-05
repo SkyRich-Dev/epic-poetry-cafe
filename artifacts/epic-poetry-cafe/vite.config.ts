@@ -5,9 +5,14 @@ import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
 const workspaceRoot = path.resolve(import.meta.dirname, "..", "..");
-process.loadEnvFile(path.join(workspaceRoot, ".env"));
 
-const rawPort = process.env.WEB_PORT ?? process.env.PORT;
+const savedPort = process.env.PORT;
+
+try { process.loadEnvFile(path.join(workspaceRoot, ".env")); } catch {}
+
+if (savedPort) process.env.PORT = savedPort;
+
+const rawPort = process.env.PORT ?? process.env.WEB_PORT;
 
 if (!rawPort) {
   throw new Error(

@@ -1,8 +1,17 @@
 import path from "path";
 
-process.loadEnvFile(path.resolve(import.meta.dirname, "../../../.env"));
+const savedEnv: Record<string, string> = {};
+for (const key of ["PORT", "DATABASE_URL", "SESSION_SECRET"]) {
+  if (process.env[key]) savedEnv[key] = process.env[key]!;
+}
 
-const rawPort = process.env["API_PORT"] ?? process.env["PORT"];
+try { process.loadEnvFile(path.resolve(import.meta.dirname, "../../../.env")); } catch {}
+
+for (const [key, val] of Object.entries(savedEnv)) {
+  process.env[key] = val;
+}
+
+const rawPort = process.env["PORT"] ?? process.env["API_PORT"];
 
 if (!rawPort) {
   throw new Error(

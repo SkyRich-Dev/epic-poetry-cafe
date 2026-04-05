@@ -5,7 +5,9 @@ import * as schema from "./schema";
 
 const { Pool } = pg;
 
-process.loadEnvFile(path.resolve(__dirname, "../../../.env"));
+const savedDbUrl = process.env.DATABASE_URL;
+try { process.loadEnvFile(path.resolve(__dirname, "../../../.env")); } catch {}
+if (savedDbUrl) process.env.DATABASE_URL = savedDbUrl;
 
 if (!process.env.DATABASE_URL) {
   throw new Error(

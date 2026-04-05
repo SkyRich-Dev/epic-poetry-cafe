@@ -180,7 +180,7 @@ export default function Sales() {
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex gap-1 bg-muted rounded-lg p-1 flex-wrap">
+        <div className="flex gap-1 bg-muted/60 rounded-xl p-1 flex-wrap">
           {tabs.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === t.key ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
               <t.icon size={16} /> {t.label}
@@ -191,20 +191,20 @@ export default function Sales() {
       </div>
 
       {tab === 'invoices' && (
-        <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Invoice</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Type</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Gross</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Disc</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">GST</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Final</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Match</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Payment</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Verified</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Actions</th>
+            <thead><tr className="border-b bg-transparent">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Invoice</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Date</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Type</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Gross</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Disc</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">GST</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Final</th>
+              <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Match</th>
+              <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Payment</th>
+              <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Verified</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Actions</th>
             </tr></thead>
             <tbody>
               {invLoading ? (
@@ -212,7 +212,7 @@ export default function Sales() {
               ) : invoices.length === 0 ? (
                 <tr><td colSpan={11} className="px-6 py-8 text-center text-muted-foreground">No invoices found</td></tr>
               ) : invoices.map(inv => (
-                <tr key={inv.id} className="border-b hover:bg-muted/30 transition-colors">
+                <tr key={inv.id} className="border-b border-border/50 hover:bg-muted/30 transition-all duration-150">
                   <td className="px-4 py-3"><div className="font-medium">{inv.invoiceNo}</div><div className="text-xs text-muted-foreground capitalize">{inv.sourceType}</div></td>
                   <td className="px-4 py-3">{formatDate(inv.salesDate)}{inv.invoiceTime && <div className="text-xs text-muted-foreground">{inv.invoiceTime}</div>}</td>
                   <td className="px-4 py-3 capitalize">{inv.orderType}</td>
@@ -242,18 +242,18 @@ export default function Sales() {
       )}
 
       {tab === 'items' && (
-        <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Item</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Qty Sold</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Menu Price</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Gross</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Discount</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">GST</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Final</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Avg Realized</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Invoices</th>
+            <thead><tr className="border-b bg-transparent">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Item</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Qty Sold</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Menu Price</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Gross</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Discount</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">GST</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Final</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Avg Realized</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Invoices</th>
             </tr></thead>
             <tbody>
               {itemSummary.length === 0 ? (
@@ -277,16 +277,16 @@ export default function Sales() {
       )}
 
       {tab === 'daily' && (
-        <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Invoices</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Gross</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Discount</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">GST</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Net Sales</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground uppercase">Mismatches</th>
+            <thead><tr className="border-b bg-transparent">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Date</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Invoices</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Gross</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Discount</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">GST</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Net Sales</th>
+              <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Mismatches</th>
             </tr></thead>
             <tbody>
               {dailySummary.length === 0 ? (
@@ -308,14 +308,14 @@ export default function Sales() {
       )}
 
       {tab === 'consumption' && (
-        <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr className="border-b bg-muted/50">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Ingredient</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Required Qty</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">UOM</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Rate (Last)</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase">Est. Cost</th>
+            <thead><tr className="border-b bg-transparent">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Ingredient</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Required Qty</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">UOM</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Rate (Last)</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Est. Cost</th>
             </tr></thead>
             <tbody>
               {consumption.length === 0 ? (
@@ -330,7 +330,7 @@ export default function Sales() {
                 </tr>
               ))}
               {consumption.length > 0 && (
-                <tr className="border-t-2 bg-muted/30">
+                <tr className="border-t-2 bg-transparent">
                   <td colSpan={4} className="px-4 py-3 font-semibold text-right">Total Estimated Material Cost</td>
                   <td className="px-4 py-3 text-right font-numbers font-bold text-orange-600">{formatCurrency(consumption.reduce((sum: number, c: any) => sum + (c.estimatedCost || 0), 0))}</td>
                 </tr>
@@ -342,18 +342,18 @@ export default function Sales() {
 
       <Modal isOpen={invoiceModal} onClose={() => setInvoiceModal(false)} title="New Sales Invoice" maxWidth="max-w-2xl"
         footer={<><Button variant="ghost" onClick={() => setInvoiceModal(false)}>Cancel</Button><Button onClick={handleInvoiceCreate}>Create Invoice</Button></>}>
-        <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
-          <div className="grid grid-cols-3 gap-4">
+        <div className="space-y-5 py-2 max-h-[60vh] overflow-y-auto">
+          <div className="grid grid-cols-3 gap-x-4 gap-y-5">
             <div><Label>Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={invoiceForm.salesDate} onChange={e => setInvoiceForm(f => ({ ...f, salesDate: e.target.value }))} /></div>
             <div><Label>Invoice No (optional)</Label><Input value={invoiceForm.invoiceNo} onChange={e => setInvoiceForm(f => ({ ...f, invoiceNo: e.target.value }))} placeholder="Auto-generated" /></div>
             <div><Label>Time</Label><Input type="time" value={invoiceForm.invoiceTime} onChange={e => setInvoiceForm(f => ({ ...f, invoiceTime: e.target.value }))} /></div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-x-4 gap-y-5">
             <div><Label>Order Type</Label><Select value={invoiceForm.orderType} onChange={(e: any) => setInvoiceForm(f => ({ ...f, orderType: e.target.value }))}>{ORDER_TYPES.map(t => <option key={t} value={t}>{t.replace('-', ' ').toUpperCase()}</option>)}</Select></div>
             <div><Label>Payment Mode</Label><Select value={invoiceForm.paymentMode} onChange={(e: any) => setInvoiceForm(f => ({ ...f, paymentMode: e.target.value }))}>{PAYMENT_MODES.map(m => <option key={m} value={m}>{m.toUpperCase()}</option>)}</Select></div>
             <div><Label>Customer Name</Label><Input value={invoiceForm.customerName} onChange={e => setInvoiceForm(f => ({ ...f, customerName: e.target.value }))} /></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Total Discount</Label><Input type="number" step="0.01" min="0" value={invoiceForm.totalDiscount} onChange={e => setInvoiceForm(f => ({ ...f, totalDiscount: Number(e.target.value) }))} /></div>
             <div className="flex items-end gap-2">
               <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -406,8 +406,8 @@ export default function Sales() {
 
       {detailModal && (
         <Modal isOpen={!!detailModal} onClose={() => setDetailModal(null)} title={`Invoice ${detailModal.invoiceNo}`} maxWidth="max-w-2xl">
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="space-y-5 py-2">
+            <div className="grid grid-cols-3 gap-x-4 gap-y-5 text-sm">
               <div><span className="text-muted-foreground">Date:</span> {formatDate(detailModal.salesDate)}</div>
               <div><span className="text-muted-foreground">Type:</span> <span className="capitalize">{detailModal.orderType}</span></div>
               <div><span className="text-muted-foreground">Payment:</span> <span className="capitalize">{detailModal.paymentMode}</span></div>
@@ -417,7 +417,7 @@ export default function Sales() {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr className="border-b bg-muted/50">
+                <thead><tr className="border-b bg-transparent">
                   <th className="px-3 py-2 text-left text-xs">Item</th>
                   <th className="px-3 py-2 text-right text-xs">Qty</th>
                   <th className="px-3 py-2 text-right text-xs">Price</th>

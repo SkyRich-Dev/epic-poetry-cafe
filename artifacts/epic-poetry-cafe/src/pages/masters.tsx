@@ -32,9 +32,9 @@ const ROLES = [
 ];
 
 function RoleBadge({ role }: { role: string }) {
-  if (role === 'admin') return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700"><ShieldCheck size={12} /> Admin</span>;
-  if (role === 'manager') return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700"><Shield size={12} /> Manager</span>;
-  return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700"><Eye size={12} /> Viewer</span>;
+  if (role === 'admin') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-purple-100 text-purple-700"><ShieldCheck size={12} /> Admin</span>;
+  if (role === 'manager') return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-blue-100 text-blue-700"><Shield size={12} /> Manager</span>;
+  return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700"><Eye size={12} /> Viewer</span>;
 }
 
 function CategoriesConfigTab() {
@@ -197,7 +197,7 @@ function CategoriesConfigTab() {
 
       <Modal isOpen={catModal} onClose={() => setCatModal(false)} title={catEditId ? "Edit Category" : "Add Category"}
         footer={<><Button variant="ghost" onClick={() => setCatModal(false)}>Cancel</Button><Button onClick={handleSaveCat}>{catEditId ? 'Update' : 'Save'}</Button></>}>
-        <div className="space-y-4 py-2">
+        <div className="space-y-5 py-2">
           <div><Label>Name</Label><Input value={catForm.name} onChange={(e:any) => setCatForm({...catForm, name: e.target.value})} /></div>
           <div>
             <Label>Type</Label>
@@ -413,8 +413,8 @@ function UsersTab() {
 
       <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Add New User" maxWidth="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => setIsCreateOpen(false)}>Cancel</Button><Button onClick={handleCreate} disabled={createMut.isPending || !createForm.username || !createForm.password || !createForm.fullName}>Create User</Button></>}>
-        <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-5 py-2">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div>
               <Label>Username</Label>
               <Input value={createForm.username} onChange={(e: any) => setCreateForm({ ...createForm, username: e.target.value })} placeholder="e.g. staff1" />
@@ -424,7 +424,7 @@ function UsersTab() {
               <Input type="password" value={createForm.password} onChange={(e: any) => setCreateForm({ ...createForm, password: e.target.value })} placeholder="Min 6 characters" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div>
               <Label>Full Name</Label>
               <Input value={createForm.fullName} onChange={(e: any) => setCreateForm({ ...createForm, fullName: e.target.value })} placeholder="e.g. John Doe" />
@@ -453,8 +453,8 @@ function UsersTab() {
 
       <Modal isOpen={!!editUser} onClose={() => setEditUser(null)} title={`Edit User — ${editUser?.username}`} maxWidth="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => setEditUser(null)}>Cancel</Button><Button onClick={handleUpdate} disabled={updateMut.isPending}>Save Changes</Button></>}>
-        <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-5 py-2">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div>
               <Label>Full Name</Label>
               <Input value={editForm.fullName} onChange={(e: any) => setEditForm({ ...editForm, fullName: e.target.value })} />
@@ -478,7 +478,7 @@ function UsersTab() {
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div>
               <Label>New Password (leave blank to keep)</Label>
               <Input type="password" value={editForm.password} onChange={(e: any) => setEditForm({ ...editForm, password: e.target.value })} placeholder="••••••" />
@@ -528,7 +528,7 @@ function AuditLogsTab() {
   const ACTIONS = ['CREATE', 'UPDATE', 'DELETE', 'VERIFY', 'UNVERIFY'];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex flex-wrap gap-3 items-end">
         <div>
           <Label className="text-xs">Module</Label>
@@ -783,7 +783,7 @@ function POSIntegrationsTab() {
         </div>
 
         {stats && detailView.provider === 'petpooja' && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <h4 className="font-semibold">Sync Statistics</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-card rounded-xl border p-4">
@@ -809,15 +809,15 @@ function POSIntegrationsTab() {
             )}
 
             {stats.recentBatches?.length > 0 && (
-              <div className="bg-card rounded-xl border shadow-sm overflow-x-auto">
+              <div className="bg-card rounded-2xl border border-border shadow-sm overflow-x-auto">
                 <div className="p-4 border-b"><h5 className="font-semibold text-sm">Recent Import Batches</h5></div>
                 <table className="w-full text-sm">
-                  <thead><tr className="border-b bg-muted/50">
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground uppercase">Date</th>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground uppercase">File</th>
-                    <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground uppercase">Invoices</th>
-                    <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground uppercase">Success</th>
-                    <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground uppercase">Failed</th>
+                  <thead><tr className="border-b bg-transparent">
+                    <th className="px-4 py-2 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Date</th>
+                    <th className="px-4 py-2 text-left text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">File</th>
+                    <th className="px-4 py-2 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Invoices</th>
+                    <th className="px-4 py-2 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Success</th>
+                    <th className="px-4 py-2 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Failed</th>
                   </tr></thead>
                   <tbody>
                     {stats.recentBatches.map((b: any) => (
@@ -908,22 +908,22 @@ function POSIntegrationsTab() {
 
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editId ? "Edit Integration" : "Add POS Integration"} maxWidth="max-w-2xl"
         footer={<><Button variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update' : 'Create'}</Button></>}>
-        <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-5 py-2 max-h-[60vh] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Integration Name *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Petpooja Main Branch" /></div>
             <div><Label>Provider *</Label><Select value={form.provider} onChange={(e: any) => setForm({ ...form, provider: e.target.value })}>
               {PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
             </Select></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Restaurant ID</Label><Input value={form.restaurantId} onChange={e => setForm({ ...form, restaurantId: e.target.value })} placeholder="Your POS restaurant ID" /></div>
             <div><Label>Base URL</Label><Input value={form.baseUrl} onChange={e => setForm({ ...form, baseUrl: e.target.value })} placeholder="https://api.petpooja.com" /></div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>API Key</Label><Input value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'API Key'} /></div>
             <div><Label>Access Token</Label><Input type="password" value={form.accessToken} onChange={e => setForm({ ...form, accessToken: e.target.value })} placeholder={editId ? 'Leave blank to keep current' : 'Token'} /></div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-x-4 gap-y-5">
             <div><Label>Default GST %</Label><Input type="number" min="0" max="28" value={form.defaultGstPercent} onChange={e => setForm({ ...form, defaultGstPercent: Number(e.target.value) })} /></div>
             <div><Label>Default Order Type</Label><Select value={form.defaultOrderType} onChange={(e: any) => setForm({ ...form, defaultOrderType: e.target.value })}>
               <option value="dine-in">Dine In</option>
@@ -938,7 +938,7 @@ function POSIntegrationsTab() {
               </label>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-x-4 gap-y-5">
             <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={form.syncOrders} onChange={e => setForm({ ...form, syncOrders: e.target.checked })} className="rounded" /> Sync Orders</label>
             <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={form.syncMenuItems} onChange={e => setForm({ ...form, syncMenuItems: e.target.checked })} className="rounded" /> Sync Menu Items</label>
             <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={form.autoSync} onChange={e => setForm({ ...form, autoSync: e.target.checked })} className="rounded" /> Auto Sync</label>
