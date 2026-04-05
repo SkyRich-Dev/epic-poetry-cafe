@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, like } from "drizzle-orm";
-import { db, employeesTable, shiftsTable, attendanceTable, leavesTable, salaryRecordsTable } from "@workspace/db";
+import { db, employeesTable, shiftsTable, attendanceTable, leavesTable, salaryRecordsTable, systemConfigTable } from "@workspace/db";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { generateCode } from "../lib/codeGenerator";
 import { createAuditLog } from "../lib/audit";
@@ -251,7 +251,10 @@ router.get("/salary", authMiddleware, adminOnly, async (req, res): Promise<void>
     paidLeaves: salaryRecordsTable.paidLeaves,
     unpaidLeaves: salaryRecordsTable.unpaidLeaves,
     weekOffs: salaryRecordsTable.weekOffs,
+    paidWeekOffs: salaryRecordsTable.paidWeekOffs,
+    excessWeekOffs: salaryRecordsTable.excessWeekOffs,
     absentDays: salaryRecordsTable.absentDays,
+    absentPenaltyMultiplier: salaryRecordsTable.absentPenaltyMultiplier,
     deductions: salaryRecordsTable.deductions,
     netSalary: salaryRecordsTable.netSalary,
     paymentStatus: salaryRecordsTable.paymentStatus,
@@ -268,6 +271,11 @@ router.get("/salary", authMiddleware, adminOnly, async (req, res): Promise<void>
 router.post("/salary/generate", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const { month, year } = req.body;
   if (!month || !year) { res.status(400).json({ error: "month and year required" }); return; }
+
+  const configs = await db.select().from(systemConfigTable);
+  const config = configs[0] || { allowedWeekOffsPerMonth: 4, absentPenaltyMultiplier: 1 };
+  const allowedWeekOffs = config.allowedWeekOffsPerMonth ?? 4;
+  const absentMultiplier = config.absentPenaltyMultiplier ?? 1;
 
   const employees = await db.select().from(employeesTable).where(eq(employeesTable.active, true));
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -304,14 +312,24 @@ router.post("/salary/generate", authMiddleware, adminOnly, async (req, res): Pro
     const unpaidLeaves = monthLeaves.filter(l => l.leaveType === "unpaid").length;
 
     const perDay = emp.salary / daysInMonth;
+
+    const paidWeekOffs = Math.min(weekOffs, allowedWeekOffs);
+    const excessWeekOffs = Math.max(0, weekOffs - allowedWeekOffs);
+
     const halfDayDeduction = halfDays * 0.5 * perDay;
-    const deductions = (unpaidLeaves + absentDays) * perDay + halfDayDeduction;
+    const absentDeduction = absentDays * absentMultiplier * perDay;
+    const excessWeekOffDeduction = excessWeekOffs * perDay;
+    const unpaidLeaveDeduction = unpaidLeaves * perDay;
+
+    const deductions = halfDayDeduction + absentDeduction + excessWeekOffDeduction + unpaidLeaveDeduction;
     const netSalary = Math.max(0, emp.salary - deductions);
 
     const [record] = await db.insert(salaryRecordsTable).values({
       employeeId: emp.id, month, year, baseSalary: emp.salary,
       totalDaysInMonth: daysInMonth, presentDays, halfDays, paidLeaves, unpaidLeaves,
-      weekOffs, absentDays, deductions: Math.round(deductions * 100) / 100,
+      weekOffs, paidWeekOffs, excessWeekOffs, absentDays,
+      absentPenaltyMultiplier: absentMultiplier,
+      deductions: Math.round(deductions * 100) / 100,
       netSalary: Math.round(netSalary * 100) / 100,
     }).returning();
     results.push(record);

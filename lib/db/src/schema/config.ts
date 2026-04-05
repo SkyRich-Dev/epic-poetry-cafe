@@ -13,6 +13,8 @@ export const systemConfigTable = pgTable("system_config", {
   dailyAllocationMethod: text("daily_allocation_method").notNull().default("equal_daily"),
   taxRate: doublePrecision("tax_rate").notNull().default(0),
   pettyCashOpeningBalance: doublePrecision("petty_cash_opening_balance").notNull().default(0),
+  allowedWeekOffsPerMonth: integer("allowed_week_offs_per_month").notNull().default(4),
+  absentPenaltyMultiplier: doublePrecision("absent_penalty_multiplier").notNull().default(1),
 });
 
 export const insertConfigSchema = createInsertSchema(systemConfigTable).omit({ id: true });
