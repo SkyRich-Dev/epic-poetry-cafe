@@ -1,10 +1,23 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
-const counters: Record<string, number> = {};
+const CODE_COLUMN: Record<string, string> = {
+  trials: "trial_code",
+  menu_items: "code",
+  purchases: "purchase_number",
+  expenses: "expense_number",
+  vendors: "code",
+  ingredients: "code",
+  petty_cash: "reference_number",
+};
 
 export async function generateCode(prefix: string, table: string): Promise<string> {
-  const result = await db.execute(sql.raw(`SELECT COUNT(*) as count FROM ${table}`));
-  const count = Number((result.rows[0] as any).count) + 1;
-  return `${prefix}${String(count).padStart(4, "0")}`;
+  const codeCol = CODE_COLUMN[table] || "code";
+  const prefixLen = prefix.length;
+
+  const result = await db.execute(
+    sql.raw(`SELECT COALESCE(MAX(CAST(SUBSTRING("${codeCol}" FROM ${prefixLen + 1}) AS INTEGER)), 0) AS max_num FROM ${table} WHERE "${codeCol}" LIKE '${prefix}%' AND SUBSTRING("${codeCol}" FROM ${prefixLen + 1}) ~ '^[0-9]+$'`)
+  );
+  const maxNum = Number((result.rows[0] as any).max_num) || 0;
+  return `${prefix}${String(maxNum + 1).padStart(4, "0")}`;
 }
