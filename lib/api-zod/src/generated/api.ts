@@ -1370,6 +1370,7 @@ export const CreateTrialVersionParams = zod.object({
 });
 
 export const CreateTrialVersionBody = zod.object({
+  trialDate: zod.string().optional(),
   batchSize: zod.number(),
   yieldQty: zod.number(),
   yieldUom: zod.string(),
