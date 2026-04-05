@@ -100,6 +100,9 @@ export default function Login() {
           <p className="text-center text-sm text-muted-foreground mt-8">
             Secure access restricted to authorized personnel only.
           </p>
+          <p className="text-center text-xs text-muted-foreground mt-4">
+            Powered by SkyRich
+          </p>
         </div>
       </div>
     </div>
