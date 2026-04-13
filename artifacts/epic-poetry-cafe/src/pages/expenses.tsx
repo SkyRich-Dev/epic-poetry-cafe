@@ -90,7 +90,7 @@ export default function Expenses() {
               <tr key={e.id} className="table-row-hover">
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(e.expenseDate)}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{e.description || 'Generic Expense'}</td>
-                <td className="px-6 py-4"><Badge variant="neutral">{e.costType}</Badge></td>
+                <td className="px-6 py-4"><Badge variant="neutral">{e.costType === 'STAFF_FOOD' ? 'Staff Food' : e.costType === 'CLEANING' ? 'Cleaning' : e.costType}</Badge></td>
                 <td className="px-6 py-4 text-muted-foreground">{e.paymentMode}</td>
                 <td className="px-6 py-4 text-right font-medium text-rose-600">{formatCurrency(e.amount)}</td>
                 <td className="px-6 py-4 text-center"><VerifyButton verified={!!e.verified} isAdmin={isAdmin} onVerify={() => handleVerify(e.id)} onUnverify={() => handleUnverify(e.id)} /></td>
@@ -113,7 +113,7 @@ export default function Expenses() {
         <div className="space-y-5 py-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={formData.expenseDate} onChange={(e:any) => setFormData({...formData, expenseDate: e.target.value})} /></div>
-            <div><Label>Cost Type</Label><Select value={formData.costType} onChange={(e:any) => setFormData({...formData, costType: e.target.value})}><option value="FIXED">Fixed (Rent/Salary)</option><option value="VARIABLE">Variable (Supplies/Repairs)</option><option value="UTILITY">Utility (Water/Power)</option></Select></div>
+            <div><Label>Cost Type</Label><Select value={formData.costType} onChange={(e:any) => setFormData({...formData, costType: e.target.value})}><option value="FIXED">Fixed (Rent/Salary)</option><option value="VARIABLE">Variable (Supplies/Repairs)</option><option value="UTILITY">Utility (Water/Power)</option><option value="STAFF_FOOD">Staff Food</option><option value="CLEANING">Cleaning Materials</option></Select></div>
           </div>
           <div><Label>Description</Label><Input value={formData.description} onChange={(e:any) => setFormData({...formData, description: e.target.value})} placeholder="e.g. Plumber repair" /></div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">

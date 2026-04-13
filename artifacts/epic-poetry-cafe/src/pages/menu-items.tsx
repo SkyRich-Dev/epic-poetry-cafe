@@ -104,7 +104,7 @@ export default function MenuItems() {
                 {isAdmin && (
                   <td className="px-6 py-4 text-right">
                     <Badge variant={item.marginPercent < 30 ? "danger" : item.marginPercent > 60 ? "success" : "warning"}>
-                      {Number(item.marginPercent).toFixed(2)}%
+                      {formatCurrency(item.sellingPrice - item.productionCost)}
                     </Badge>
                   </td>
                 )}
@@ -232,7 +232,7 @@ function RecipeBuilderModal({ item, onClose, isViewer }: { item: any, onClose: (
               <div>
                 <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider">Est. Margin</p>
                 <p className={cn("text-xl font-display font-bold", (costing?.margin || 0) > 0 ? "text-emerald-600" : "text-rose-600")}>
-                  {formatCurrency(costing?.margin || 0)} <span className="text-sm font-medium">({Number(costing?.marginPercent || 0).toFixed(2)}%)</span>
+                  {formatCurrency(costing?.margin || 0)}
                 </p>
               </div>
             </div>
