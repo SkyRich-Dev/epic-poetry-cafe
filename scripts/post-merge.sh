@@ -1,5 +1,4 @@
 #!/bin/bash
 set -e
-npm install
-npm run db:prepare
-npm run db:push
+pnpm install
+pnpm --filter @workspace/db exec drizzle-kit push --force --config ./drizzle.config.ts
