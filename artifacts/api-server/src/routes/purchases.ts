@@ -80,6 +80,7 @@ router.post("/purchases", authMiddleware, async (req, res): Promise<void> => {
       unitRate: line.unitRate,
       taxPercent: line.taxPercent ?? 0,
       lineTotal,
+      expiryDate: line.expiryDate || null,
     });
 
     const [ing] = await db.select().from(ingredientsTable).where(eq(ingredientsTable.id, line.ingredientId));
@@ -170,6 +171,7 @@ router.get("/purchases/:id", async (req, res): Promise<void> => {
       unitRate: purchaseLinesTable.unitRate,
       taxPercent: purchaseLinesTable.taxPercent,
       lineTotal: purchaseLinesTable.lineTotal,
+      expiryDate: purchaseLinesTable.expiryDate,
     })
     .from(purchaseLinesTable)
     .leftJoin(ingredientsTable, eq(purchaseLinesTable.ingredientId, ingredientsTable.id))

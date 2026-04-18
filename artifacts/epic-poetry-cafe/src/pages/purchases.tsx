@@ -34,11 +34,11 @@ export default function Purchases() {
 
   const openCreate = () => {
     setFormData({ purchaseDate: new Date().toISOString().split('T')[0], vendorId: vendors?.[0]?.id || 0, invoiceNumber: '', paymentMode: 'CASH', paymentStatus: 'PAID' });
-    setLines([{ ingredientId: 0, quantity: 1, unitRate: 0, taxPercent: 0 }]);
+    setLines([{ ingredientId: 0, quantity: 1, unitRate: 0, taxPercent: 0, expiryDate: '' }]);
     setIsModalOpen(true);
   };
 
-  const addLine = () => setLines([...lines, { ingredientId: 0, quantity: 1, unitRate: 0, taxPercent: 0 }]);
+  const addLine = () => setLines([...lines, { ingredientId: 0, quantity: 1, unitRate: 0, taxPercent: 0, expiryDate: '' }]);
   const removeLine = (idx: number) => setLines(lines.filter((_, i) => i !== idx));
   const updateLine = (idx: number, field: string, val: any) => {
     const newLines = [...lines];
@@ -58,8 +58,18 @@ export default function Purchases() {
     if (!formData.vendorId) { toast({ title: 'Please select a vendor', variant: 'destructive' }); return; }
     const validLines = lines.filter(l => l.ingredientId > 0 && l.quantity > 0);
     if (validLines.length === 0) { toast({ title: 'Add at least one item with quantity', variant: 'destructive' }); return; }
+    const today = new Date().toISOString().split('T')[0];
+    for (const l of validLines) {
+      if (l.expiryDate && l.expiryDate < today) {
+        toast({ title: 'Expiry date cannot be in the past', variant: 'destructive' });
+        return;
+      }
+    }
     try {
-      const payload = { ...formData, lines: validLines };
+      const payload = {
+        ...formData,
+        lines: validLines.map(l => ({ ...l, expiryDate: l.expiryDate || null })),
+      };
       await createMut.mutateAsync({ data: payload as any });
       queryClient.invalidateQueries({ queryKey: ['/api/purchases'] });
       setIsModalOpen(false);
@@ -151,10 +161,11 @@ export default function Purchases() {
             <div className="space-y-2">
               <div className="flex gap-3 px-3 py-2 text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide tracking-wider">
                 <div className="flex-1">Ingredient</div>
-                <div className="w-24 text-right">Qty</div>
-                <div className="w-32 text-right">Rate ($)</div>
-                <div className="w-24 text-right">Tax (%)</div>
-                <div className="w-32 text-right">Total</div>
+                <div className="w-20 text-right">Qty</div>
+                <div className="w-28 text-right">Rate ($)</div>
+                <div className="w-20 text-right">Tax (%)</div>
+                <div className="w-36">Expiry</div>
+                <div className="w-28 text-right">Total</div>
                 <div className="w-10"></div>
               </div>
               {lines.map((line, idx) => {
@@ -167,16 +178,25 @@ export default function Purchases() {
                         {ingredients?.map(ing => <option key={ing.id} value={ing.id}>{ing.name}</option>)}
                       </Select>
                     </div>
-                    <div className="w-24">
+                    <div className="w-20">
                       <Input type="number" value={line.quantity} onChange={(e:any) => updateLine(idx, 'quantity', Number(e.target.value))} className="text-right" />
                     </div>
-                    <div className="w-32">
+                    <div className="w-28">
                       <Input type="number" step="0.01" value={line.unitRate} onChange={(e:any) => updateLine(idx, 'unitRate', Number(e.target.value))} className="text-right" />
                     </div>
-                    <div className="w-24">
+                    <div className="w-20">
                       <Input type="number" value={line.taxPercent} onChange={(e:any) => updateLine(idx, 'taxPercent', Number(e.target.value))} className="text-right" />
                     </div>
-                    <div className="w-32 text-right font-medium px-2 py-2 bg-muted/50 rounded-xl border border-transparent">
+                    <div className="w-36">
+                      <Input
+                        type="date"
+                        min={new Date().toISOString().split('T')[0]}
+                        value={line.expiryDate || ''}
+                        onChange={(e:any) => updateLine(idx, 'expiryDate', e.target.value)}
+                        placeholder="Optional"
+                      />
+                    </div>
+                    <div className="w-28 text-right font-medium px-2 py-2 bg-muted/50 rounded-xl border border-transparent">
                       {formatCurrency(lineTotal)}
                     </div>
                     <button onClick={() => removeLine(idx)} className="p-2 text-muted-foreground hover:text-destructive transition-colors w-10 flex justify-center">

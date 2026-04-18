@@ -41,6 +41,7 @@ export const purchaseLinesTable = pgTable("purchase_lines", {
   unitRate: doublePrecision("unit_rate").notNull(),
   taxPercent: doublePrecision("tax_percent").notNull().default(0),
   lineTotal: doublePrecision("line_total").notNull().default(0),
+  expiryDate: text("expiry_date"),
 });
 
 export const insertPurchaseSchema = createInsertSchema(purchasesTable).omit({ id: true, purchaseNumber: true, totalAmount: true, createdAt: true, updatedAt: true });

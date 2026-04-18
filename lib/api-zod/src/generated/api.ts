@@ -806,6 +806,7 @@ export const CreatePurchaseBody = zod.object({
       purchaseUom: zod.string().optional(),
       unitRate: zod.number(),
       taxPercent: zod.number().optional(),
+      expiryDate: zod.string().nullish(),
     }),
   ),
 });
@@ -842,6 +843,7 @@ export const GetPurchaseResponse = zod.object({
       unitRate: zod.number(),
       taxPercent: zod.number().optional(),
       lineTotal: zod.number(),
+      expiryDate: zod.string().nullish(),
     }),
   ),
 });
