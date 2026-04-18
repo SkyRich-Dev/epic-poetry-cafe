@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import React, { useState } from "react";
 import {
   Platform,
@@ -27,14 +27,88 @@ import { formatCurrency, formatNumber } from "@/lib/format";
 
 type FeatherName = React.ComponentProps<typeof Feather>["name"];
 
-const TABS: { key: string; label: string; icon: FeatherName; admin: boolean }[] = [
-  { key: "alerts", label: "Alerts", icon: "alert-circle", admin: false },
-  { key: "inventory", label: "Inventory", icon: "box", admin: false },
-  { key: "operational", label: "Operations", icon: "activity", admin: false },
-  { key: "customer", label: "Customer", icon: "users", admin: false },
-  { key: "predictive", label: "Forecast", icon: "trending-up", admin: false },
-  { key: "revenue", label: "Revenue", icon: "dollar-sign", admin: true },
-  { key: "financial", label: "Margin", icon: "pie-chart", admin: true },
+type Endpoint = { label: string; path: string };
+type TabDef = {
+  key: string;
+  label: string;
+  icon: FeatherName;
+  admin: boolean;
+  endpoints: Endpoint[];
+};
+
+const TABS: TabDef[] = [
+  {
+    key: "alerts",
+    label: "Alerts",
+    icon: "alert-circle",
+    admin: false,
+    endpoints: [{ label: "Active alerts", path: "/decision/alerts" }],
+  },
+  {
+    key: "inventory",
+    label: "Inventory",
+    icon: "box",
+    admin: false,
+    endpoints: [
+      { label: "Consumption variance", path: "/decision/inventory/consumption-variance" },
+      { label: "Dead stock", path: "/decision/inventory/dead-stock" },
+      { label: "Cost impact", path: "/decision/inventory/cost-impact" },
+      { label: "Expiry risk", path: "/decision/inventory/expiry-risk" },
+    ],
+  },
+  {
+    key: "operational",
+    label: "Operations",
+    icon: "activity",
+    admin: false,
+    endpoints: [
+      { label: "Staff efficiency", path: "/decision/operational/staff-efficiency" },
+      { label: "Kitchen load", path: "/decision/operational/kitchen-load" },
+    ],
+  },
+  {
+    key: "customer",
+    label: "Customer",
+    icon: "users",
+    admin: false,
+    endpoints: [
+      { label: "Customer lifetime value", path: "/decision/customer/clv" },
+      { label: "Churn risk", path: "/decision/customer/churn" },
+    ],
+  },
+  {
+    key: "predictive",
+    label: "Forecast",
+    icon: "trending-up",
+    admin: false,
+    endpoints: [
+      { label: "Sales forecast", path: "/decision/predictive/sales" },
+      { label: "Demand forecast", path: "/decision/predictive/demand" },
+    ],
+  },
+  {
+    key: "revenue",
+    label: "Revenue",
+    icon: "dollar-sign",
+    admin: true,
+    endpoints: [
+      { label: "Revenue leakage", path: "/decision/revenue/leakage" },
+      { label: "Profit comparison", path: "/decision/revenue/profit-comparison" },
+      { label: "Item matrix", path: "/decision/revenue/item-matrix" },
+    ],
+  },
+  {
+    key: "financial",
+    label: "Margin",
+    icon: "pie-chart",
+    admin: true,
+    endpoints: [
+      { label: "Payment trend", path: "/decision/financial/payment-trend" },
+      { label: "Settlement mismatch", path: "/decision/financial/settlement-mismatch" },
+      { label: "Vendor risk", path: "/decision/financial/vendor-risk" },
+      { label: "Expense efficiency", path: "/decision/financial/expense-efficiency" },
+    ],
+  },
 ];
 
 export default function DecisionScreen() {
@@ -45,14 +119,26 @@ export default function DecisionScreen() {
   const [tab, setTab] = useState("alerts");
 
   const visibleTabs = TABS.filter((t) => !t.admin || user?.role === "admin");
+  const activeTab = visibleTabs.find((t) => t.key === tab) ?? visibleTabs[0];
 
-  const q = useQuery({
-    queryKey: ["decision", tab],
-    queryFn: async () => {
-      const res = await api.get<unknown>(`/decision/${tab}`);
-      return res;
-    },
+  const queries = useQueries({
+    queries: (activeTab?.endpoints ?? []).map((ep) => ({
+      queryKey: ["decision", ep.path],
+      queryFn: () => api.get<unknown>(ep.path),
+      retry: false,
+    })),
   });
+
+  const isLoading = queries.length > 0 && queries.every((q) => q.isLoading);
+  const isFetching = queries.some((q) => q.isFetching);
+  const allErrored = queries.length > 0 && queries.every((q) => q.isError);
+  const firstError = queries.find((q) => q.isError)?.error as Error | undefined;
+  const firstAdminBlock =
+    firstError instanceof ApiError && firstError.status === 403 ? firstError : null;
+
+  const refetchAll = () => {
+    queries.forEach((q) => void q.refetch());
+  };
 
   return (
     <ScrollView
@@ -65,8 +151,8 @@ export default function DecisionScreen() {
       }}
       refreshControl={
         <RefreshControl
-          refreshing={q.isFetching}
-          onRefresh={() => q.refetch()}
+          refreshing={isFetching}
+          onRefresh={refetchAll}
           tintColor={c.primary}
         />
       }
@@ -120,48 +206,92 @@ export default function DecisionScreen() {
         })}
       </ScrollView>
 
-      {q.isLoading ? (
+      {isLoading ? (
         <LoadingState label="Crunching numbers" />
-      ) : q.isError ? (
-        <DecisionError error={q.error as Error} onRetry={() => q.refetch()} />
+      ) : firstAdminBlock && allErrored ? (
+        <Card>
+          <EmptyState
+            icon="lock"
+            title="Admin only"
+            message="This decision area is locked to financial owners. Sign in as admin to view it."
+          />
+        </Card>
+      ) : allErrored && firstError ? (
+        <ErrorState
+          message={firstError.message ?? "Could not load this decision tab"}
+          onRetry={refetchAll}
+        />
       ) : (
-        <DecisionContent tab={tab} data={q.data} />
+        <View style={{ gap: 18 }}>
+          {(activeTab?.endpoints ?? []).map((ep, i) => (
+            <EndpointSection
+              key={ep.path}
+              label={ep.label}
+              query={queries[i]}
+            />
+          ))}
+        </View>
       )}
     </ScrollView>
   );
 }
 
-function DecisionError({ error, onRetry }: { error: Error; onRetry: () => void }) {
-  if (error instanceof ApiError && error.status === 403) {
+function EndpointSection({
+  label,
+  query,
+}: {
+  label: string;
+  query: { data: unknown; isLoading: boolean; isError: boolean; error: unknown };
+}) {
+  const c = useColors();
+
+  if (query.isLoading) {
     return (
-      <Card>
-        <EmptyState
-          icon="lock"
-          title="Admin only"
-          message="This decision area is locked to financial owners. Sign in as admin to view it."
-        />
-      </Card>
+      <View>
+        <SectionHeader title={label} />
+        <LoadingState label="Loading" />
+      </View>
     );
   }
+
+  if (query.isError) {
+    const err = query.error as Error | undefined;
+    const isAdmin = err instanceof ApiError && err.status === 403;
+    return (
+      <View>
+        <SectionHeader title={label} />
+        <Card>
+          <EmptyState
+            icon={isAdmin ? "lock" : "alert-circle"}
+            title={isAdmin ? "Admin only" : "Couldn't load"}
+            message={
+              isAdmin
+                ? "Sign in as admin to see this section."
+                : err?.message ?? "Try refreshing."
+            }
+          />
+        </Card>
+      </View>
+    );
+  }
+
   return (
-    <ErrorState
-      message={error?.message ?? "Could not load this decision tab"}
-      onRetry={onRetry}
-    />
+    <View>
+      <SectionHeader title={label} />
+      <DecisionPayload data={query.data} />
+    </View>
   );
 }
 
-function DecisionContent({ tab, data }: { tab: string; data: unknown }) {
+function DecisionPayload({ data }: { data: unknown }) {
   const c = useColors();
 
-  if (!data || (typeof data === "object" && Object.keys(data as object).length === 0)) {
+  if (data == null) {
     return (
       <Card>
-        <EmptyState
-          icon="check-circle"
-          title="Nothing to act on"
-          message="The engine could not find any recommendations right now."
-        />
+        <Text style={{ color: c.mutedForeground, fontSize: 13 }}>
+          No data returned.
+        </Text>
       </Card>
     );
   }
@@ -170,29 +300,94 @@ function DecisionContent({ tab, data }: { tab: string; data: unknown }) {
     if (data.length === 0) {
       return (
         <Card>
-          <EmptyState icon="check-circle" title="All clear" message="No items here." />
+          <EmptyState icon="check-circle" title="All clear" message="Nothing here right now." />
         </Card>
       );
     }
     return (
       <View style={{ gap: 10 }}>
-        {data.map((item, i) => (
+        {data.slice(0, 12).map((item, i) => (
           <RecCard key={i} item={item} />
         ))}
       </View>
     );
   }
 
+  if (typeof data !== "object") {
+    return (
+      <Card>
+        <Text
+          style={{
+            fontSize: 22,
+            fontFamily: "Inter_700Bold",
+            color: c.foreground,
+          }}
+        >
+          {String(data)}
+        </Text>
+      </Card>
+    );
+  }
+
   const obj = data as Record<string, unknown>;
-  const sections = Object.entries(obj);
+  const entries = Object.entries(obj);
+  if (entries.length === 0) {
+    return (
+      <Card>
+        <EmptyState icon="check-circle" title="Nothing to act on" message="No recommendations right now." />
+      </Card>
+    );
+  }
+
+  const arrayEntries = entries.filter(([, v]) => Array.isArray(v));
+  const scalarEntries = entries.filter(
+    ([, v]) => v !== null && v !== undefined && (typeof v !== "object" || false) && !Array.isArray(v),
+  );
+  const objectEntries = entries.filter(
+    ([, v]) => v !== null && typeof v === "object" && !Array.isArray(v),
+  );
 
   return (
-    <View style={{ gap: 16 }}>
-      {sections.map(([key, value]) => (
-        <View key={key}>
-          <SectionHeader title={prettyKey(key)} />
-          {Array.isArray(value) ? (
-            value.length === 0 ? (
+    <View style={{ gap: 12 }}>
+      {scalarEntries.length > 0 ? (
+        <Card>
+          <KeyValueGrid obj={Object.fromEntries(scalarEntries)} />
+        </Card>
+      ) : null}
+      {objectEntries.map(([k, v]) => (
+        <View key={k} style={{ gap: 6 }}>
+          <Text
+            style={{
+              fontSize: 12,
+              fontFamily: "Inter_600SemiBold",
+              color: c.mutedForeground,
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+            }}
+          >
+            {prettyKey(k)}
+          </Text>
+          <Card>
+            <KeyValueGrid obj={v as Record<string, unknown>} />
+          </Card>
+        </View>
+      ))}
+      {arrayEntries.map(([k, v]) => {
+        const arr = v as unknown[];
+        return (
+          <View key={k} style={{ gap: 6 }}>
+            <Text
+              style={{
+                fontSize: 12,
+                fontFamily: "Inter_600SemiBold",
+                color: c.mutedForeground,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+              }}
+            >
+              {prettyKey(k)}
+            </Text>
+            {arr.length === 0 ? (
               <Card>
                 <Text style={{ color: c.mutedForeground, fontSize: 13 }}>
                   Nothing here right now.
@@ -200,30 +395,14 @@ function DecisionContent({ tab, data }: { tab: string; data: unknown }) {
               </Card>
             ) : (
               <View style={{ gap: 10 }}>
-                {value.slice(0, 8).map((item, i) => (
+                {arr.slice(0, 8).map((item, i) => (
                   <RecCard key={i} item={item} />
                 ))}
               </View>
-            )
-          ) : typeof value === "object" && value !== null ? (
-            <Card>
-              <KeyValueGrid obj={value as Record<string, unknown>} />
-            </Card>
-          ) : (
-            <Card>
-              <Text
-                style={{
-                  fontSize: 22,
-                  fontFamily: "Inter_700Bold",
-                  color: c.foreground,
-                }}
-              >
-                {String(value ?? "—")}
-              </Text>
-            </Card>
-          )}
-        </View>
-      ))}
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -239,9 +418,33 @@ function RecCard({ item }: { item: unknown }) {
     );
   }
   const obj = item as Record<string, unknown>;
-  const title = pickString(obj, ["name", "title", "ingredient", "ingredientName", "menuItem", "menuItemName", "customerName", "vendor", "label", "category"]);
-  const subtitle = pickString(obj, ["recommendation", "action", "reason", "message", "note", "description", "status"]);
-  const sevStr = pickString(obj, ["severity", "priority", "level"]);
+  const title = pickString(obj, [
+    "name",
+    "title",
+    "ingredient",
+    "ingredientName",
+    "menuItem",
+    "menuItemName",
+    "customerName",
+    "vendor",
+    "vendorName",
+    "label",
+    "category",
+    "employeeName",
+    "paymentMode",
+    "date",
+  ]);
+  const subtitle = pickString(obj, [
+    "recommendation",
+    "action",
+    "reason",
+    "message",
+    "note",
+    "description",
+    "status",
+    "insight",
+  ]);
+  const sevStr = pickString(obj, ["severity", "priority", "level", "risk"]);
   const severity = (sevStr ?? "").toLowerCase();
   const tone: "danger" | "warning" | "info" | "neutral" =
     severity.includes("crit") || severity.includes("high")
@@ -255,7 +458,7 @@ function RecCard({ item }: { item: unknown }) {
   const numericPairs = Object.entries(obj).filter(
     ([k, v]) =>
       typeof v === "number" &&
-      !["id", "ingredientId", "menuItemId", "customerId"].includes(k),
+      !["id", "ingredientId", "menuItemId", "customerId", "employeeId", "vendorId"].includes(k),
   );
 
   return (
@@ -331,7 +534,11 @@ function RecCard({ item }: { item: unknown }) {
 function KeyValueGrid({ obj }: { obj: Record<string, unknown> }) {
   const c = useColors();
   const entries = Object.entries(obj).filter(
-    ([, v]) => v !== null && v !== undefined && (typeof v !== "object" || Array.isArray(v) === false),
+    ([, v]) =>
+      v !== null &&
+      v !== undefined &&
+      (typeof v !== "object" || Array.isArray(v) === false) &&
+      typeof v !== "object",
   );
   if (entries.length === 0) {
     return (
