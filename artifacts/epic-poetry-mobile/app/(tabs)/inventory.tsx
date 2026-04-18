@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
   Platform,
@@ -39,6 +40,7 @@ type FilterKey = (typeof FILTERS)[number];
 
 export default function InventoryScreen() {
   const c = useColors();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
   const [filter, setFilter] = useState<FilterKey>("All");
@@ -262,6 +264,7 @@ export default function InventoryScreen() {
                         ? "neutral"
                         : "success"
                   }
+                  onPress={() => router.push(`/stock-adjust/${i.id}`)}
                 />
                 {idx < filtered.length - 1 ? (
                   <View

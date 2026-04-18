@@ -19,6 +19,7 @@ import {
   ListRow,
   LoadingState,
   Pill,
+  PrimaryButton,
   SectionHeader,
 } from "@/components/UI";
 import { useColors } from "@/hooks/useColors";
@@ -110,26 +111,40 @@ export default function SalesScreen() {
       }
       showsVerticalScrollIndicator={false}
     >
-      <View>
-        <Text
-          style={{
-            fontSize: 28,
-            fontFamily: "PlayfairDisplay_700Bold",
-            color: c.foreground,
-            letterSpacing: -0.5,
-          }}
-        >
-          Sales
-        </Text>
-        <Text
-          style={{
-            fontSize: 13,
-            color: c.mutedForeground,
-            marginTop: 2,
-          }}
-        >
-          Every invoice — POS-synced and manual.
-        </Text>
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          gap: 12,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              fontSize: 28,
+              fontFamily: "PlayfairDisplay_700Bold",
+              color: c.foreground,
+              letterSpacing: -0.5,
+            }}
+          >
+            Sales
+          </Text>
+          <Text
+            style={{
+              fontSize: 13,
+              color: c.mutedForeground,
+              marginTop: 2,
+            }}
+          >
+            Every invoice — POS-synced and manual.
+          </Text>
+        </View>
+        <PrimaryButton
+          label="New"
+          icon="plus"
+          onPress={() => router.push("/sale/new")}
+        />
       </View>
 
       <View

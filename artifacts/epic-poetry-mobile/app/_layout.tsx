@@ -82,6 +82,18 @@ function RootLayoutNav() {
         name="sale/[id]"
         options={{ title: "Invoice", presentation: "card" }}
       />
+      <Stack.Screen
+        name="sale/new"
+        options={{ title: "New invoice", presentation: "modal" }}
+      />
+      <Stack.Screen
+        name="expense/new"
+        options={{ title: "New expense", presentation: "modal" }}
+      />
+      <Stack.Screen
+        name="stock-adjust/[id]"
+        options={{ title: "Adjust stock", presentation: "modal" }}
+      />
     </Stack>
   );
 }

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import React, { useMemo } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
 
@@ -8,6 +9,7 @@ import {
   ErrorState,
   ListRow,
   LoadingState,
+  PrimaryButton,
 } from "@/components/UI";
 import { useColors } from "@/hooks/useColors";
 import { api } from "@/lib/api";
@@ -24,6 +26,7 @@ interface Expense {
 
 export default function ExpensesScreen() {
   const c = useColors();
+  const router = useRouter();
   const fromDate = daysAgoISO(30);
   const toDate = todayISO();
 
@@ -52,22 +55,38 @@ export default function ExpensesScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Card>
-        <Text style={{ fontSize: 11, color: c.mutedForeground, fontFamily: "Inter_600SemiBold", letterSpacing: 0.3 }}>
-          LAST 30 DAYS
-        </Text>
-        <Text
+        <View
           style={{
-            fontSize: 28,
-            color: c.foreground,
-            fontFamily: "Inter_700Bold",
-            marginTop: 4,
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
           }}
         >
-          {formatCurrency(total)}
-        </Text>
-        <Text style={{ fontSize: 12, color: c.mutedForeground, marginTop: 4 }}>
-          across {(q.data ?? []).length} entries
-        </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 11, color: c.mutedForeground, fontFamily: "Inter_600SemiBold", letterSpacing: 0.3 }}>
+              LAST 30 DAYS
+            </Text>
+            <Text
+              style={{
+                fontSize: 28,
+                color: c.foreground,
+                fontFamily: "Inter_700Bold",
+                marginTop: 4,
+              }}
+            >
+              {formatCurrency(total)}
+            </Text>
+            <Text style={{ fontSize: 12, color: c.mutedForeground, marginTop: 4 }}>
+              across {(q.data ?? []).length} entries
+            </Text>
+          </View>
+          <PrimaryButton
+            label="Add"
+            icon="plus"
+            onPress={() => router.push("/expense/new")}
+          />
+        </View>
       </Card>
 
       {q.isLoading ? (
