@@ -1,5 +1,10 @@
 uploads = []
-generated = []
+
+[[generated]]
+id = "zy2NzfY_NKN2oUC-XJeql"
+uri = "file://artifacts/epic-poetry-mobile/assets/images/icon.png"
+type = "image"
+title = "epic poetry app icon"
 
 [[outputs]]
 id = "nro3DNhDE5e1Y8uvLVYuH"
