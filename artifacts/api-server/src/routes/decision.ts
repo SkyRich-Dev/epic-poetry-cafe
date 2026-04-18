@@ -18,7 +18,7 @@ import {
   settlementLinesTable,
   usersTable,
 } from "@workspace/db";
-import { authMiddleware } from "../lib/auth";
+import { authMiddleware, adminOnly } from "../lib/auth";
 
 const router: IRouter = Router();
 
@@ -172,7 +172,7 @@ router.get("/decision/revenue/leakage", authMiddleware, async (req, res): Promis
 });
 
 // 5.2 Real Profit vs Theoretical Profit
-router.get("/decision/revenue/profit-comparison", authMiddleware, async (req, res): Promise<void> => {
+router.get("/decision/revenue/profit-comparison", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const { fromDate, toDate } = getRange(req, 30);
   const invoices = await db.select().from(salesInvoicesTable)
     .where(and(gte(salesInvoicesTable.salesDate, fromDate), lte(salesInvoicesTable.salesDate, toDate)));
@@ -549,7 +549,11 @@ router.get("/decision/inventory/consumption-variance", authMiddleware, async (re
     recipesByItem.set(r.menuItemId, arr);
   }
 
-  const theoretical = new Map<number, number>(); // ingredientId -> qty in stockUom
+  // Load ingredients early so we can normalize recipe-UOM → stock-UOM during accumulation.
+  const ings = await db.select().from(ingredientsTable);
+  const ingMap = new Map(ings.map(i => [i.id, i]));
+
+  const theoretical = new Map<number, number>(); // ingredientId -> qty in STOCK uom
   if (invIds.length > 0) {
     const lines = await db.select({
       menuItemId: salesInvoiceLinesTable.menuItemId,
@@ -559,13 +563,16 @@ router.get("/decision/inventory/consumption-variance", authMiddleware, async (re
     for (const l of lines) {
       const recs = recipesByItem.get(l.menuItemId) || [];
       for (const r of recs) {
-        const need = r.quantity * (1 + (r.wastagePercent || 0) / 100) * l.qty;
-        theoretical.set(r.ingredientId, (theoretical.get(r.ingredientId) || 0) + need);
+        const factor = ingMap.get(r.ingredientId)?.conversionFactor || 1;
+        // recipe qty is in recipe-UOM; divide by conversionFactor to get stock-UOM
+        const needRecipeUom = r.quantity * (1 + (r.wastagePercent || 0) / 100) * l.qty;
+        const needStockUom = needRecipeUom / factor;
+        theoretical.set(r.ingredientId, (theoretical.get(r.ingredientId) || 0) + needStockUom);
       }
     }
   }
 
-  // Actual from snapshots
+  // Actual from snapshots (already in stock UOM)
   const snaps = await db.select({
     ingredientId: stockSnapshotsTable.ingredientId,
     consumed: sql<number>`COALESCE(SUM(${stockSnapshotsTable.consumedQty}), 0)`,
@@ -573,9 +580,6 @@ router.get("/decision/inventory/consumption-variance", authMiddleware, async (re
   }).from(stockSnapshotsTable)
     .where(and(gte(stockSnapshotsTable.snapshotDate, fromDate), lte(stockSnapshotsTable.snapshotDate, toDate)))
     .groupBy(stockSnapshotsTable.ingredientId);
-
-  const ings = await db.select().from(ingredientsTable);
-  const ingMap = new Map(ings.map(i => [i.id, i]));
 
   const allIngIds = new Set([...theoretical.keys(), ...snaps.map(s => s.ingredientId)]);
   const rows = [...allIngIds].map(id => {
@@ -586,7 +590,8 @@ router.get("/decision/inventory/consumption-variance", authMiddleware, async (re
     const wasteQ = Number(snap?.waste || 0);
     const variance = actual - th;
     const variancePct = th > 0 ? (variance / th) * 100 : (actual > 0 ? 100 : 0);
-    const costPerUnit = ing ? (ing.latestCost || 0) / (ing.conversionFactor || 1) : 0;
+    // Both `theoretical` and `actual` are now in stock-UOM, so use cost-per-stock-unit directly.
+    const costPerUnit = ing ? (ing.latestCost || 0) : 0;
     return {
       ingredientId: id, name: ing?.name || `Ingredient ${id}`,
       stockUom: ing?.stockUom || "—",
@@ -767,7 +772,7 @@ router.get("/decision/inventory/cost-impact", authMiddleware, async (req, res): 
 // =========================== FINANCIAL =============================
 
 // 9.1 Cash vs Digital Trend
-router.get("/decision/financial/payment-trend", authMiddleware, async (req, res): Promise<void> => {
+router.get("/decision/financial/payment-trend", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const { fromDate, toDate } = getRange(req, 30);
   const invoices = await db.select().from(salesInvoicesTable)
     .where(and(gte(salesInvoicesTable.salesDate, fromDate), lte(salesInvoicesTable.salesDate, toDate)));
@@ -794,7 +799,7 @@ router.get("/decision/financial/payment-trend", authMiddleware, async (req, res)
 });
 
 // 9.2 Settlement Mismatch Intelligence
-router.get("/decision/financial/settlement-mismatch", authMiddleware, async (req, res): Promise<void> => {
+router.get("/decision/financial/settlement-mismatch", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const { fromDate, toDate } = getRange(req, 60);
   const settlements = await db.select().from(dailySalesSettlementsTable)
     .where(and(gte(dailySalesSettlementsTable.settlementDate, fromDate), lte(dailySalesSettlementsTable.settlementDate, toDate)))
@@ -823,7 +828,7 @@ router.get("/decision/financial/settlement-mismatch", authMiddleware, async (req
 });
 
 // 9.3 Vendor Risk Insight
-router.get("/decision/financial/vendor-risk", authMiddleware, async (_req, res): Promise<void> => {
+router.get("/decision/financial/vendor-risk", authMiddleware, adminOnly, async (_req, res): Promise<void> => {
   const today = fmtDate(new Date());
   const vendors = await db.select().from(vendorsTable);
 
@@ -903,7 +908,7 @@ router.get("/decision/financial/vendor-risk", authMiddleware, async (_req, res):
 });
 
 // 9.4 Expense Efficiency
-router.get("/decision/financial/expense-efficiency", authMiddleware, async (req, res): Promise<void> => {
+router.get("/decision/financial/expense-efficiency", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const days = Math.max(14, Number(req.query.days) || 30);
   const toDate = fmtDate(new Date());
   const fromDate = fmtDate(addDays(new Date(), -(days - 1)));

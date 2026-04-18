@@ -195,7 +195,8 @@ export default function AttendancePage() {
                     </tr>
                   );
                 });
-                })()}
+                })()
+                }
               </tbody>
             </table>
           </div>
