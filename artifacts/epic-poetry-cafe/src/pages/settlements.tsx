@@ -35,11 +35,25 @@ export default function Settlements() {
   const [detailModal, setDetailModal] = useState<number | null>(null);
   const [settlementDate, setSettlementDate] = useState(new Date().toISOString().split('T')[0]);
   const [remarks, setRemarks] = useState('');
-  const [lines, setLines] = useState<{ paymentMode: string; amount: string; referenceNote: string }[]>([
-    { paymentMode: 'Cash', amount: '', referenceNote: '' },
+  const [lines, setLines] = useState<{ paymentMode: string; amount: string; referenceNote: string; denominations?: Record<string, number> }[]>([
+    { paymentMode: 'Cash', amount: '', referenceNote: '', denominations: {} },
     { paymentMode: 'Card', amount: '', referenceNote: '' },
     { paymentMode: 'QR', amount: '', referenceNote: '' },
   ]);
+
+  const DENOM_VALUES = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
+  const denomTotal = (denoms?: Record<string, number>) =>
+    denoms ? Object.entries(denoms).reduce((s, [k, v]) => s + Number(k) * (Number(v) || 0), 0) : 0;
+  const updateDenom = (idx: number, value: number, count: string) => {
+    const updated = [...lines];
+    const denoms = { ...(updated[idx].denominations || {}) };
+    const n = parseInt(count, 10);
+    if (!count || isNaN(n) || n <= 0) delete denoms[String(value)];
+    else denoms[String(value)] = n;
+    updated[idx].denominations = denoms;
+    updated[idx].amount = String(denomTotal(denoms));
+    setLines(updated);
+  };
 
   const { data: salesSummary } = useGetSettlementSalesSummary({ date: settlementDate }, { query: { enabled: isModalOpen } });
   const { data: detail } = useGetSettlement(detailModal || 0, { query: { enabled: !!detailModal } });
@@ -59,6 +73,15 @@ export default function Settlements() {
   const handleSave = async () => {
     const validLines = lines.filter(l => l.paymentMode && Number(l.amount) > 0);
     if (validLines.length === 0) return;
+    for (const l of validLines) {
+      if (l.paymentMode.toLowerCase() === 'cash' && l.denominations && Object.keys(l.denominations).length > 0) {
+        const dt = denomTotal(l.denominations);
+        if (Math.abs(dt - Number(l.amount)) > 0.01) {
+          toast({ title: 'Cash mismatch', description: `Denominations total ₹${dt.toFixed(2)} doesn't match cash amount ₹${Number(l.amount).toFixed(2)}`, variant: 'destructive' });
+          return;
+        }
+      }
+    }
     const payload = {
       settlementDate,
       remarks: remarks || undefined,
@@ -66,6 +89,7 @@ export default function Settlements() {
         paymentMode: l.paymentMode,
         amount: Number(l.amount),
         referenceNote: l.referenceNote || undefined,
+        ...(l.paymentMode.toLowerCase() === 'cash' && l.denominations && Object.keys(l.denominations).length > 0 ? { denominations: l.denominations } : {}),
       })),
     } as any;
     try {
@@ -91,7 +115,7 @@ export default function Settlements() {
       .then(r => r.json())
       .then(detail => {
         if (detail.lines?.length) {
-          setLines(detail.lines.map((l: any) => ({ paymentMode: l.paymentMode, amount: String(l.amount), referenceNote: l.referenceNote || '' })));
+          setLines(detail.lines.map((l: any) => ({ paymentMode: l.paymentMode, amount: String(l.amount), referenceNote: l.referenceNote || '', denominations: l.denominations || (l.paymentMode?.toLowerCase() === 'cash' ? {} : undefined) })));
         }
         setIsModalOpen(true);
       });
@@ -116,7 +140,7 @@ export default function Settlements() {
     setSettlementDate(new Date().toISOString().split('T')[0]);
     setRemarks('');
     setLines([
-      { paymentMode: 'Cash', amount: '', referenceNote: '' },
+      { paymentMode: 'Cash', amount: '', referenceNote: '', denominations: {} },
       { paymentMode: 'Card', amount: '', referenceNote: '' },
       { paymentMode: 'QR', amount: '', referenceNote: '' },
     ]);
@@ -214,18 +238,63 @@ export default function Settlements() {
               <Label>Payment Lines</Label>
               <Button variant="ghost" onClick={addLine} className="text-xs">+ Add Line</Button>
             </div>
-            <div className="space-y-2">
-              {lines.map((line, idx) => (
-                <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                  <select className="col-span-4 flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" value={line.paymentMode} onChange={(e) => updateLine(idx, 'paymentMode', e.target.value)}>
-                    <option value="">Select...</option>
-                    {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                  <Input className="col-span-3" type="number" placeholder="Amount" value={line.amount} onChange={(e: any) => updateLine(idx, 'amount', e.target.value)} />
-                  <Input className="col-span-4" placeholder="Reference" value={line.referenceNote} onChange={(e: any) => updateLine(idx, 'referenceNote', e.target.value)} />
-                  <button className="col-span-1 text-muted-foreground hover:text-red-500" onClick={() => removeLine(idx)}><XCircle size={16} /></button>
-                </div>
-              ))}
+            <div className="space-y-3">
+              {lines.map((line, idx) => {
+                const isCash = line.paymentMode.toLowerCase() === 'cash';
+                const dt = denomTotal(line.denominations);
+                const hasDenoms = isCash && line.denominations && Object.keys(line.denominations).length > 0;
+                const mismatch = hasDenoms && Math.abs(dt - Number(line.amount)) > 0.01;
+                return (
+                  <div key={idx} className="rounded-xl border border-border p-3 space-y-3">
+                    <div className="grid grid-cols-12 gap-2 items-center">
+                      <select className="col-span-4 flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" value={line.paymentMode} onChange={(e) => {
+                        const newMode = e.target.value;
+                        const updated = [...lines];
+                        updated[idx].paymentMode = newMode;
+                        if (newMode.toLowerCase() === 'cash' && !updated[idx].denominations) updated[idx].denominations = {};
+                        if (newMode.toLowerCase() !== 'cash') updated[idx].denominations = undefined;
+                        setLines(updated);
+                      }}>
+                        <option value="">Select...</option>
+                        {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      <Input className="col-span-3" type="number" placeholder="Amount" value={line.amount} onChange={(e: any) => updateLine(idx, 'amount', e.target.value)} disabled={hasDenoms} />
+                      <Input className="col-span-4" placeholder="Reference" value={line.referenceNote} onChange={(e: any) => updateLine(idx, 'referenceNote', e.target.value)} />
+                      <button className="col-span-1 text-muted-foreground hover:text-red-500" onClick={() => removeLine(idx)}><XCircle size={16} /></button>
+                    </div>
+                    {isCash && (
+                      <div className="bg-muted/40 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Cash Denominations</p>
+                          {hasDenoms && (
+                            <p className={`text-xs font-medium ${mismatch ? 'text-red-600' : 'text-emerald-600'}`}>
+                              Total: {formatCurrency(dt)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-5 gap-2">
+                          {DENOM_VALUES.map(v => (
+                            <div key={v} className="flex items-center gap-1.5">
+                              <span className="text-xs font-medium text-muted-foreground w-10">₹{v}</span>
+                              <input
+                                type="number" min="0" step="1" placeholder="0"
+                                value={line.denominations?.[String(v)] ?? ''}
+                                onChange={(e) => updateDenom(idx, v, e.target.value)}
+                                className="flex h-8 w-full rounded-lg border border-input bg-background px-2 py-1 text-xs"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        {hasDenoms && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Cash amount auto-filled from denominations. Clear all denominations to enter amount manually.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -275,11 +344,29 @@ export default function Settlements() {
               </thead>
               <tbody className="divide-y divide-border">
                 {detail.lines.map((l: any) => (
-                  <tr key={l.id}>
-                    <td className="px-4 py-3 font-medium">{l.paymentMode}</td>
-                    <td className="px-4 py-3 text-right">{formatCurrency(l.amount)}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{l.referenceNote || '-'}</td>
-                  </tr>
+                  <React.Fragment key={l.id}>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">{l.paymentMode}</td>
+                      <td className="px-4 py-3 text-right">{formatCurrency(l.amount)}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{l.referenceNote || '-'}</td>
+                    </tr>
+                    {l.denominations && Object.keys(l.denominations).length > 0 && (
+                      <tr>
+                        <td colSpan={3} className="px-4 pb-3 bg-muted/30">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Cash Denominations</p>
+                          <div className="grid grid-cols-5 gap-2 text-xs">
+                            {Object.entries(l.denominations).sort((a, b) => Number(b[0]) - Number(a[0])).map(([v, count]: any) => (
+                              <div key={v} className="flex justify-between bg-background rounded px-2 py-1">
+                                <span className="text-muted-foreground">₹{v} ×</span>
+                                <span className="font-medium">{count}</span>
+                                <span className="text-muted-foreground">= {formatCurrency(Number(v) * Number(count))}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

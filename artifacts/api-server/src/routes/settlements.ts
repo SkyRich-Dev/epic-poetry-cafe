@@ -60,6 +60,13 @@ router.post("/settlements", authMiddleware, async (req, res): Promise<void> => {
       res.status(400).json({ error: "Each line must have a payment mode and non-negative amount" });
       return;
     }
+    if (line.paymentMode.toLowerCase() === "cash" && line.denominations) {
+      const denomTotal = Object.entries(line.denominations).reduce((s: number, [k, v]: any) => s + Number(k) * Number(v || 0), 0);
+      if (Math.abs(denomTotal - Number(line.amount)) > 0.01) {
+        res.status(400).json({ error: `Cash denominations total ₹${denomTotal.toFixed(2)} doesn't match cash amount ₹${Number(line.amount).toFixed(2)}` });
+        return;
+      }
+    }
   }
 
   const [invoiceTotals] = await db.select({
@@ -104,6 +111,7 @@ router.post("/settlements", authMiddleware, async (req, res): Promise<void> => {
       paymentMode: line.paymentMode,
       amount: Number(line.amount) || 0,
       referenceNote: line.referenceNote || null,
+      denominations: line.paymentMode.toLowerCase() === "cash" ? (line.denominations || null) : null,
     });
   }
 
@@ -150,12 +158,20 @@ router.patch("/settlements/:id", authMiddleware, async (req, res): Promise<void>
     totalSettlementAmount = 0;
     for (const line of lines) {
       const amt = Number(line.amount) || 0;
+      if (line.paymentMode?.toLowerCase() === "cash" && line.denominations) {
+        const denomTotal = Object.entries(line.denominations).reduce((s: number, [k, v]: any) => s + Number(k) * Number(v || 0), 0);
+        if (Math.abs(denomTotal - amt) > 0.01) {
+          res.status(400).json({ error: `Cash denominations total ₹${denomTotal.toFixed(2)} doesn't match cash amount ₹${amt.toFixed(2)}` });
+          return;
+        }
+      }
       totalSettlementAmount += amt;
       await db.insert(settlementLinesTable).values({
         settlementId: id,
         paymentMode: line.paymentMode,
         amount: amt,
         referenceNote: line.referenceNote || null,
+        denominations: line.paymentMode?.toLowerCase() === "cash" ? (line.denominations || null) : null,
       });
     }
   }
