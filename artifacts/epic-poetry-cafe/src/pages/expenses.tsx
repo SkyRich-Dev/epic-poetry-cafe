@@ -118,7 +118,7 @@ export default function Expenses() {
           <div><Label>Description</Label><Input value={formData.description} onChange={(e:any) => setFormData({...formData, description: e.target.value})} placeholder="e.g. Plumber repair" /></div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Amount</Label><Input type="number" step="0.01" value={formData.amount} onChange={(e:any) => setFormData({...formData, amount: Number(e.target.value)})} /></div>
-            <div><Label>Payment Mode</Label><Select value={formData.paymentMode} onChange={(e:any) => setFormData({...formData, paymentMode: e.target.value})}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank Transfer</option></Select></div>
+            <div><Label>Payment Mode</Label><Select value={formData.paymentMode} onChange={(e:any) => setFormData({...formData, paymentMode: e.target.value})}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="PETTY_CASH">Petty Cash</option></Select></div>
           </div>
         </div>
       </Modal>

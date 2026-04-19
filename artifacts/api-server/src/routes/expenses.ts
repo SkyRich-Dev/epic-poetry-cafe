@@ -67,7 +67,8 @@ router.post("/expenses", authMiddleware, async (req, res): Promise<void> => {
   if (dateErr) { res.status(400).json({ error: dateErr }); return; }
   const expenseNumber = await generateCode("EXP", "expenses");
   const totalAmount = parsed.data.amount + (parsed.data.taxAmount ?? 0);
-  const isPettyCash = parsed.data.paymentMode?.toLowerCase() === "petty cash";
+  const _pmNorm = parsed.data.paymentMode?.toLowerCase().replace(/[_-]/g, " ").trim();
+  const isPettyCash = _pmNorm === "petty cash";
 
   if (isPettyCash) {
     const balance = await getPettyCashBalance();
