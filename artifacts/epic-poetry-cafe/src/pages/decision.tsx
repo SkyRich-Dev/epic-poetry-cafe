@@ -498,7 +498,6 @@ function InventoryTab() {
   const variance = useApi<any>('decision/inventory/consumption-variance');
   const dead = useApi<any>('decision/inventory/dead-stock');
   const cost = useApi<any>('decision/inventory/cost-impact');
-  const expiry = useApi<any>('decision/inventory/expiry-risk');
   return (
     <div className="space-y-6">
       <Card title="Real vs expected consumption (30d)">
@@ -547,62 +546,6 @@ function InventoryTab() {
           )}
         </Card>
       </div>
-
-      <Card title="Expiry risk & FIFO planning" subtitle="Per-batch shelf life vs daily consumption (next 30 days)">
-        {expiry.loading ? <Skeleton /> : !expiry.data ? null : expiry.data.summary.batchesTracked === 0 ? (
-          <EmptyState message={expiry.data.note || "No batches with expiry yet."} />
-        ) : (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              <Stat label="Batches tracked" value={expiry.data.summary.batchesTracked} />
-              <Stat label="Expiring ≤30d" value={expiry.data.summary.expiringSoon} />
-              <Stat label="Expired on hand" value={expiry.data.summary.expiredOnHand} />
-              <Stat label="Value at risk" value={formatCurrency(expiry.data.summary.valueAtRisk)} />
-            </div>
-
-            {expiry.data.batches.length > 0 && (
-              <div className="mb-5">
-                <h4 className="text-sm font-semibold mb-2">Batches at risk (FIFO order)</h4>
-                <Table headers={["Ingredient", "Vendor", "PO", "Qty", "Expiry", "Days left", "Value", "Status"]}
-                  rows={expiry.data.batches.map((b: any) => [
-                    b.ingredientName,
-                    b.vendorName,
-                    b.purchaseNumber,
-                    `${b.quantity} ${b.uom}`,
-                    b.expiryDate,
-                    <span className={
-                      b.status === 'expired' ? 'text-red-700 font-bold' :
-                      b.status === 'critical' ? 'text-red-600 font-semibold' :
-                      'text-amber-600 font-medium'
-                    }>{b.daysToExpiry}d</span>,
-                    formatCurrency(b.value),
-                    <span className={
-                      b.status === 'expired' ? 'inline-block px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-semibold' :
-                      b.status === 'critical' ? 'inline-block px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-semibold' :
-                      'inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold'
-                    }>{b.status}</span>,
-                  ])} />
-              </div>
-            )}
-
-            {expiry.data.ingredientPlan.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold mb-2">Consumption plan per ingredient</h4>
-                <Table headers={["Ingredient", "On hand", "Avg daily use", "Days of cover", "Next expiry", "Value at risk", "Action"]}
-                  rows={expiry.data.ingredientPlan.map((p: any) => [
-                    p.ingredientName,
-                    `${p.onHandStock} ${p.uom}`,
-                    `${p.avgDailyUsage} ${p.uom}/d`,
-                    p.daysOfCover === null ? '—' : `${p.daysOfCover}d`,
-                    `${p.nextExpiryDate} (${p.daysToNextExpiry}d)`,
-                    formatCurrency(p.valueAtRisk),
-                    <span className="text-xs">{p.recommendedAction}</span>,
-                  ])} />
-              </div>
-            )}
-          </>
-        )}
-      </Card>
 
       <Card title="Cost increase impact" subtitle="Vendor rate changes affecting menu margins">
         {cost.loading ? <Skeleton /> : cost.data && cost.data.changes.length === 0 ? (

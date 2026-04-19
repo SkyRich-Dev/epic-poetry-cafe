@@ -53,7 +53,6 @@ const TABS: TabDef[] = [
       { label: "Consumption variance", path: "/decision/inventory/consumption-variance" },
       { label: "Dead stock", path: "/decision/inventory/dead-stock" },
       { label: "Cost impact", path: "/decision/inventory/cost-impact" },
-      { label: "Expiry risk", path: "/decision/inventory/expiry-risk" },
     ],
   },
   {
