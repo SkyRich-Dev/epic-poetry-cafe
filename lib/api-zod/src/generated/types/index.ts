@@ -36,6 +36,7 @@ export * from "./dailySalesSummary";
 export * from "./dashboardSummary";
 export * from "./deletePettyCash200";
 export * from "./deleteSettlement200";
+export * from "./deleteTrial200";
 export * from "./expense";
 export * from "./exportReportParams";
 export * from "./getConsumptionVarianceParams";

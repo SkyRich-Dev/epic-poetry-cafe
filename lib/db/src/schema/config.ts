@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 
 export const systemConfigTable = pgTable("system_config", {
   id: serial("id").primaryKey(),
+  cafeName: text("cafe_name").notNull().default("Platr"),
   costingMethod: text("costing_method").notNull().default("weighted_average"),
   currency: text("currency").notNull().default("INR"),
   decimalPrecision: integer("decimal_precision").notNull().default(2),

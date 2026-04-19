@@ -3,6 +3,7 @@ import { X, CalendarDays, RotateCcw, ShieldCheck, ShieldX } from 'lucide-react';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
+import { useGetConfig } from '@workspace/api-client-react';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -25,9 +26,14 @@ export function formatDate(dateString: string | null | undefined): string {
 }
 
 export function PageHeader({ title, description, children }: { title: string, description?: string, children?: React.ReactNode }) {
+  const { data: config } = useGetConfig();
+  const cafeName = (config as any)?.cafeName?.trim();
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div>
+        {cafeName && (
+          <p className="text-[11px] font-semibold text-primary uppercase tracking-[0.18em] mb-1.5">{cafeName}</p>
+        )}
         <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground tracking-tight">{title}</h1>
         {description && <p className="text-muted-foreground mt-1.5 text-sm">{description}</p>}
       </div>

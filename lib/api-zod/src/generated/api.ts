@@ -211,6 +211,7 @@ export const UpdateUomResponse = zod.object({
  */
 export const GetConfigResponse = zod.object({
   id: zod.number(),
+  cafeName: zod.string(),
   costingMethod: zod.string(),
   currency: zod.string(),
   decimalPrecision: zod.number().optional(),
@@ -219,14 +220,13 @@ export const GetConfigResponse = zod.object({
   lowStockAlertDays: zod.number().optional(),
   dailyAllocationMethod: zod.string().optional(),
   taxRate: zod.number().optional(),
-  allowedWeekOffsPerMonth: zod.number().optional(),
-  absentPenaltyMultiplier: zod.number().optional(),
 });
 
 /**
  * @summary Update system config
  */
 export const UpdateConfigBody = zod.object({
+  cafeName: zod.string().optional(),
   costingMethod: zod.string().optional(),
   currency: zod.string().optional(),
   decimalPrecision: zod.number().optional(),
@@ -235,12 +235,11 @@ export const UpdateConfigBody = zod.object({
   lowStockAlertDays: zod.number().optional(),
   dailyAllocationMethod: zod.string().optional(),
   taxRate: zod.number().optional(),
-  allowedWeekOffsPerMonth: zod.number().optional(),
-  absentPenaltyMultiplier: zod.number().optional(),
 });
 
 export const UpdateConfigResponse = zod.object({
   id: zod.number(),
+  cafeName: zod.string(),
   costingMethod: zod.string(),
   currency: zod.string(),
   decimalPrecision: zod.number().optional(),
@@ -249,8 +248,6 @@ export const UpdateConfigResponse = zod.object({
   lowStockAlertDays: zod.number().optional(),
   dailyAllocationMethod: zod.string().optional(),
   taxRate: zod.number().optional(),
-  allowedWeekOffsPerMonth: zod.number().optional(),
-  absentPenaltyMultiplier: zod.number().optional(),
 });
 
 /**
@@ -806,7 +803,6 @@ export const CreatePurchaseBody = zod.object({
       purchaseUom: zod.string().optional(),
       unitRate: zod.number(),
       taxPercent: zod.number().optional(),
-      expiryDate: zod.string().nullish(),
     }),
   ),
 });
@@ -843,7 +839,6 @@ export const GetPurchaseResponse = zod.object({
       unitRate: zod.number(),
       taxPercent: zod.number().optional(),
       lineTotal: zod.number(),
-      expiryDate: zod.string().nullish(),
     }),
   ),
 });
@@ -1371,6 +1366,17 @@ export const UpdateTrialResponse = zod.object({
 });
 
 /**
+ * @summary Delete trial
+ */
+export const DeleteTrialParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteTrialResponse = zod.object({
+  ok: zod.boolean().optional(),
+});
+
+/**
  * @summary Create trial version
  */
 export const CreateTrialVersionParams = zod.object({
@@ -1378,7 +1384,6 @@ export const CreateTrialVersionParams = zod.object({
 });
 
 export const CreateTrialVersionBody = zod.object({
-  trialDate: zod.string().optional(),
   batchSize: zod.number(),
   yieldQty: zod.number(),
   yieldUom: zod.string(),

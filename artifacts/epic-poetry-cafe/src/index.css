@@ -61,45 +61,46 @@
 }
 
 :root {
-  --background: 30 20% 98%;
-  --foreground: 220 15% 18%;
+  /* Platr brand: orange #E8722C + dark charcoal #2A323B + cream #F8F5EE */
+  --background: 41 33% 96%;
+  --foreground: 213 16% 19%;
   --card: 0 0% 100%;
-  --card-foreground: 220 15% 18%;
-  --card-border: 220 10% 92%;
+  --card-foreground: 213 16% 19%;
+  --card-border: 30 12% 88%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 220 15% 18%;
-  --popover-border: 220 10% 92%;
+  --popover-foreground: 213 16% 19%;
+  --popover-border: 30 12% 88%;
 
-  --primary: 24 60% 42%;
+  --primary: 22 79% 54%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 220 10% 95%;
-  --secondary-foreground: 220 15% 25%;
+  --secondary: 30 18% 93%;
+  --secondary-foreground: 213 16% 22%;
 
-  --muted: 220 10% 95%;
-  --muted-foreground: 220 10% 46%;
+  --muted: 30 18% 93%;
+  --muted-foreground: 213 10% 42%;
 
-  --accent: 24 30% 94%;
-  --accent-foreground: 24 60% 38%;
+  --accent: 22 60% 94%;
+  --accent-foreground: 22 79% 42%;
 
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 220 10% 90%;
-  --input: 220 10% 90%;
-  --ring: 24 60% 42%;
+  --border: 30 12% 88%;
+  --input: 30 12% 88%;
+  --ring: 22 79% 54%;
 
   --radius: 0.75rem;
 
-  --sidebar: 220 18% 14%;
-  --sidebar-foreground: 220 10% 85%;
-  --sidebar-border: 220 15% 20%;
-  --sidebar-primary: 24 60% 45%;
+  --sidebar: 213 16% 19%;
+  --sidebar-foreground: 30 12% 85%;
+  --sidebar-border: 213 14% 26%;
+  --sidebar-primary: 22 79% 54%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 220 15% 20%;
-  --sidebar-accent-foreground: 220 10% 95%;
-  --sidebar-ring: 24 60% 45%;
+  --sidebar-accent: 213 14% 26%;
+  --sidebar-accent-foreground: 30 12% 95%;
+  --sidebar-ring: 22 79% 54%;
 
   --app-font-sans: 'Inter', 'DM Sans', system-ui, sans-serif;
   --app-font-serif: 'Playfair Display', serif;

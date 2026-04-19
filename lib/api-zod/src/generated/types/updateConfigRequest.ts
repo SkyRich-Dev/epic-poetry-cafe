@@ -7,6 +7,7 @@
  */
 
 export interface UpdateConfigRequest {
+  cafeName?: string;
   costingMethod?: string;
   currency?: string;
   decimalPrecision?: number;

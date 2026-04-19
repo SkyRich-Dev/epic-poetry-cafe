@@ -84,6 +84,7 @@ export interface CreateUomRequest {
 
 export interface SystemConfig {
   id: number;
+  cafeName: string;
   costingMethod: string;
   currency: string;
   decimalPrecision?: number;
@@ -95,6 +96,7 @@ export interface SystemConfig {
 }
 
 export interface UpdateConfigRequest {
+  cafeName?: string;
   costingMethod?: string;
   currency?: string;
   decimalPrecision?: number;
@@ -608,7 +610,6 @@ export interface TrialVersion {
   id: number;
   trialId: number;
   versionNumber: number;
-  trialDate?: string;
   batchSize: number;
   yieldQty: number;
   yieldUom: string;
@@ -625,7 +626,6 @@ export interface TrialVersion {
   consistencyScore?: number | null;
   /** @nullable */
   notes?: string | null;
-  inventoryDeducted?: number;
   ingredients: TrialIngredientLine[];
   createdAt?: string;
 }
@@ -661,7 +661,6 @@ export interface TrialIngredientInput {
 }
 
 export interface CreateTrialVersionRequest {
-  trialDate?: string;
   batchSize: number;
   yieldQty: number;
   yieldUom: string;
@@ -925,6 +924,10 @@ export type ListWasteEntriesParams = {
 export type GetWasteSummaryParams = {
   fromDate?: string;
   toDate?: string;
+};
+
+export type DeleteTrial200 = {
+  ok?: boolean;
 };
 
 export type GetDashboardSummaryParams = {

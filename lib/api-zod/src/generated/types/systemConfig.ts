@@ -8,6 +8,7 @@
 
 export interface SystemConfig {
   id: number;
+  cafeName: string;
   costingMethod: string;
   currency: string;
   decimalPrecision?: number;

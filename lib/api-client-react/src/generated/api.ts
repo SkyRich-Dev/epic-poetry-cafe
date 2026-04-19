@@ -42,6 +42,7 @@ import type {
   DashboardSummary,
   DeletePettyCash200,
   DeleteSettlement200,
+  DeleteTrial200,
   Expense,
   ExportReportParams,
   GetConsumptionVarianceParams,
@@ -5035,8 +5036,8 @@ export const getDeleteTrialUrl = (id: number) => {
 export const deleteTrial = async (
   id: number,
   options?: RequestInit,
-): Promise<{ success: boolean }> => {
-  return customFetch<{ success: boolean }>(getDeleteTrialUrl(id), {
+): Promise<DeleteTrial200> => {
+  return customFetch<DeleteTrial200>(getDeleteTrialUrl(id), {
     ...options,
     method: "DELETE",
   });
@@ -5073,6 +5074,7 @@ export const getDeleteTrialMutationOptions = <
     { id: number }
   > = (props) => {
     const { id } = props ?? {};
+
     return deleteTrial(id, requestOptions);
   };
 
@@ -5082,6 +5084,7 @@ export const getDeleteTrialMutationOptions = <
 export type DeleteTrialMutationResult = NonNullable<
   Awaited<ReturnType<typeof deleteTrial>>
 >;
+
 export type DeleteTrialMutationError = ErrorType<unknown>;
 
 /**

@@ -15,6 +15,7 @@ const TABS = [
 type TabId = typeof TABS[number]['id'];
 
 const DEFAULT_CONFIG = {
+  cafeName: 'Platr',
   costingMethod: 'weighted_average',
   currency: 'INR',
   decimalPrecision: 2,
@@ -55,6 +56,7 @@ function CategoriesConfigTab() {
   useEffect(() => {
     if (config) {
       setConfigForm({
+        cafeName: (config as any).cafeName || 'Platr',
         costingMethod: config.costingMethod || 'weighted_average',
         currency: config.currency || 'INR',
         decimalPrecision: config.decimalPrecision ?? 2,
@@ -157,6 +159,10 @@ function CategoriesConfigTab() {
           </div>
           <div className="p-6 space-y-4">
             <div className="flex justify-between py-2 border-b border-border/50">
+              <span className="text-muted-foreground">Cafe / Restaurant Name</span>
+              <span className="font-medium">{(config as any)?.cafeName || 'Platr'}</span>
+            </div>
+            <div className="flex justify-between py-2 border-b border-border/50">
               <span className="text-muted-foreground">Currency</span>
               <span className="font-medium">{config?.currency || 'INR'}</span>
             </div>
@@ -228,6 +234,15 @@ function CategoriesConfigTab() {
           {configError && (
             <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-xl p-3 text-red-600 text-sm">{configError}</div>
           )}
+          <div>
+            <Label>Cafe / Restaurant Name</Label>
+            <Input
+              value={configForm.cafeName}
+              onChange={(e:any) => setConfigForm({...configForm, cafeName: e.target.value})}
+              placeholder="e.g. Joe's Cafe"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">Shown in page headers and report headers across the app.</p>
+          </div>
           <div>
             <Label>Costing Method</Label>
             <select className="flex h-11 w-full rounded-xl border border-input bg-background px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

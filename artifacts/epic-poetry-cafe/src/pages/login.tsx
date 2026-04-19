@@ -27,7 +27,7 @@ export default function Login() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <img
-            src={`${import.meta.env.BASE_URL}images/platr-logo.jpeg`}
+            src={`${import.meta.env.BASE_URL}images/platr-logo.png`}
             alt="Platr"
             className="h-16 mx-auto mb-6 object-contain"
           />

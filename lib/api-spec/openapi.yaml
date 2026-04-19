@@ -1189,6 +1189,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Trial"
+    delete:
+      operationId: deleteTrial
+      tags: [trials]
+      summary: Delete trial
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
 
   /trials/{id}/versions:
     post:
@@ -1860,6 +1880,8 @@ components:
       properties:
         id:
           type: integer
+        cafeName:
+          type: string
         costingMethod:
           type: string
         currency:
@@ -1878,12 +1900,15 @@ components:
           type: number
       required:
         - id
+        - cafeName
         - costingMethod
         - currency
 
     UpdateConfigRequest:
       type: object
       properties:
+        cafeName:
+          type: string
         costingMethod:
           type: string
         currency:
