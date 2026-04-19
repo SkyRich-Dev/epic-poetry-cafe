@@ -109,8 +109,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-sidebar text-sidebar-foreground z-20 relative">
         <div className="flex items-center gap-3">
-          <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="Logo" className="w-8 h-8 rounded-lg bg-white p-0.5" />
-          <span className="font-semibold text-base text-white">Epic Poetry</span>
+          <img src={`${import.meta.env.BASE_URL}images/platr-logo.jpeg`} alt="Platr" className="w-8 h-8 rounded-lg bg-white p-0.5 object-contain" />
+          <span className="font-semibold text-base text-white">Platr</span>
         </div>
         <button onClick={toggleMobile} className="p-2 rounded-lg hover:bg-sidebar-accent transition-colors">
           {mobileOpen ? <X size={22} /> : <Menu size={22} />}
@@ -124,10 +124,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       )}>
         <div className="px-5 py-5 hidden md:flex items-center gap-3.5">
           <div className="bg-white p-1.5 rounded-xl">
-            <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="Logo" className="w-9 h-9 object-contain" />
+            <img src={`${import.meta.env.BASE_URL}images/platr-logo.jpeg`} alt="Platr" className="w-9 h-9 object-contain" />
           </div>
           <div>
-            <h2 className="font-semibold text-lg text-white leading-tight">Epic Poetry</h2>
+            <h2 className="font-semibold text-lg text-white leading-tight">Platr</h2>
             <p className="text-[11px] text-sidebar-foreground/50 uppercase tracking-[0.15em] font-medium">Cafe Engine</p>
           </div>
         </div>
