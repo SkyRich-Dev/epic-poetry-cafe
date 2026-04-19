@@ -6,6 +6,7 @@ import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { validateNotFutureDate } from "../lib/dateValidation";
+import { isPettyCashMode } from "../lib/paymentMode";
 
 async function getPettyCashBalance(): Promise<number> {
   const result = await db.select({
@@ -67,8 +68,7 @@ router.post("/expenses", authMiddleware, async (req, res): Promise<void> => {
   if (dateErr) { res.status(400).json({ error: dateErr }); return; }
   const expenseNumber = await generateCode("EXP", "expenses");
   const totalAmount = parsed.data.amount + (parsed.data.taxAmount ?? 0);
-  const _pmNorm = parsed.data.paymentMode?.toLowerCase().replace(/[_-]/g, " ").trim();
-  const isPettyCash = _pmNorm === "petty cash";
+  const isPettyCash = isPettyCashMode(parsed.data.paymentMode);
 
   if (isPettyCash) {
     const balance = await getPettyCashBalance();

@@ -21,6 +21,7 @@ import {
   systemConfigTable,
 } from "@workspace/db";
 import { authMiddleware, adminOnly } from "../lib/auth";
+import { normalizePaymentMode } from "../lib/paymentMode";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 
@@ -346,7 +347,7 @@ R({ key: "sales-by-payment-mode", title: "Sales by Payment Mode", category: "Sal
       .where(and(gte(salesInvoicesTable.salesDate, from), lte(salesInvoicesTable.salesDate, to)));
     const m = new Map<string, any>();
     for (const i of inv) {
-      const k = i.paymentMode || "other";
+      const k = normalizePaymentMode(i.paymentMode);
       const e = m.get(k) || { paymentMode: k, invoiceCount: 0, net: 0 };
       e.invoiceCount++; e.net += i.finalAmount;
       m.set(k, e);

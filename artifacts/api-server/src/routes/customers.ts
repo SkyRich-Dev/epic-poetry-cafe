@@ -6,6 +6,7 @@ import {
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { recomputeCustomerStats, normalizePhone } from "../lib/customers";
+import { normalizePaymentMode } from "../lib/paymentMode";
 
 const router: IRouter = Router();
 
@@ -83,7 +84,8 @@ router.get("/customers/:id", authMiddleware, async (req, res): Promise<void> => 
     const payCount = new Map<string, number>();
     const orderCount = new Map<string, number>();
     for (const inv of invoices) {
-      payCount.set(inv.paymentMode, (payCount.get(inv.paymentMode) || 0) + 1);
+      const _pm = normalizePaymentMode(inv.paymentMode);
+      payCount.set(_pm, (payCount.get(_pm) || 0) + 1);
       orderCount.set(inv.orderType, (orderCount.get(inv.orderType) || 0) + 1);
       if (inv.invoiceTime) {
         const h = parseInt(inv.invoiceTime.split(":")[0], 10);
