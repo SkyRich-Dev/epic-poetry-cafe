@@ -47,9 +47,10 @@ export default function DecisionPage() {
     <div className="space-y-6">
       <PageHeader
         title="Decision Engine"
-        subtitle="Intelligence layer that turns operational data into business decisions"
-        icon={Brain}
-      />
+        description="Intelligence layer that turns operational data into business decisions"
+      >
+        <Brain className="w-6 h-6 text-primary" />
+      </PageHeader>
 
       {/* Tab strip */}
       <div className="flex flex-wrap gap-2 border-b border-zinc-200 dark:border-zinc-800 pb-1">
