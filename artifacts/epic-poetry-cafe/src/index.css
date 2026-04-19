@@ -93,13 +93,15 @@
 
   --radius: 0.75rem;
 
-  --sidebar: 213 16% 19%;
-  --sidebar-foreground: 30 12% 85%;
-  --sidebar-border: 213 14% 26%;
+  /* Light sidebar that matches the Platr logo backdrop (warm cream)
+     with charcoal text and orange active state. */
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 213 16% 22%;
+  --sidebar-border: 30 14% 90%;
   --sidebar-primary: 22 79% 54%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 213 14% 26%;
-  --sidebar-accent-foreground: 30 12% 95%;
+  --sidebar-accent: 22 60% 96%;
+  --sidebar-accent-foreground: 22 79% 42%;
   --sidebar-ring: 22 79% 54%;
 
   --app-font-sans: 'Inter', 'DM Sans', system-ui, sans-serif;

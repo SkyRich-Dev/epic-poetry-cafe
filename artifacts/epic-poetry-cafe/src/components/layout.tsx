@@ -109,24 +109,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-sidebar text-sidebar-foreground z-20 relative">
         <div className="flex items-center gap-3">
-          <div className="bg-white rounded-lg px-2 py-1">
-            <img src={`${import.meta.env.BASE_URL}images/platr-logo.png`} alt="Platr" className="h-6 object-contain" />
-          </div>
+          <img src={`${import.meta.env.BASE_URL}images/platr-logo.png`} alt="Platr" className="h-7 object-contain" />
         </div>
-        <button onClick={toggleMobile} className="p-2 rounded-lg hover:bg-sidebar-accent transition-colors">
+        <button onClick={toggleMobile} className="p-2 rounded-lg hover:bg-sidebar-accent transition-colors text-sidebar-foreground">
           {mobileOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
       </div>
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed md:sticky top-0 left-0 h-screen w-[260px] bg-sidebar text-sidebar-foreground flex-shrink-0 z-30 transition-transform duration-300 ease-in-out flex flex-col",
+        "fixed md:sticky top-0 left-0 h-screen w-[260px] bg-sidebar text-sidebar-foreground flex-shrink-0 z-30 transition-transform duration-300 ease-in-out flex flex-col border-r border-sidebar-border",
         mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full md:translate-x-0"
       )}>
-        <div className="px-5 py-6 hidden md:flex items-center justify-center">
-          <div className="bg-white rounded-xl px-4 py-3 w-full flex items-center justify-center shadow-sm">
-            <img src={`${import.meta.env.BASE_URL}images/platr-logo.png`} alt="Platr" className="h-10 object-contain" />
-          </div>
+        <div className="px-6 py-6 hidden md:flex items-center justify-start border-b border-sidebar-border">
+          <img src={`${import.meta.env.BASE_URL}images/platr-logo.png`} alt="Platr" className="h-9 object-contain" />
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-4 md:py-2 custom-scrollbar">
@@ -142,11 +138,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <li key={item.path}>
                       <Link href={item.path} className={cn(
                         "flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-200 text-[13px] font-medium",
-                        isActive 
-                          ? "bg-sidebar-primary text-white" 
-                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        isActive
+                          ? "bg-sidebar-primary text-white shadow-sm shadow-sidebar-primary/20"
+                          : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                       )} onClick={closeMobile}>
-                        <item.icon size={17} className={cn("transition-colors shrink-0", isActive ? "text-white" : "text-sidebar-foreground/45")} />
+                        <item.icon size={17} className={cn("transition-colors shrink-0", isActive ? "text-white" : "text-sidebar-foreground/55")} />
                         {item.name}
                       </Link>
                     </li>
@@ -158,18 +154,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="p-3 border-t border-sidebar-border mt-auto flex-shrink-0">
-          <div className="flex items-center justify-between px-2 py-1.5">
-            <div className="flex flex-col min-w-0">
-              <span className="text-sm font-medium text-white truncate">{user?.fullName || 'User'}</span>
-              <span className="text-[11px] text-sidebar-foreground/50 capitalize">{user?.role || 'Staff'}</span>
+          <div className="flex items-center justify-between px-2 py-1.5 gap-2">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold shrink-0">
+                {(user?.fullName || user?.username || 'U').slice(0, 1).toUpperCase()}
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-[13px] font-semibold text-sidebar-foreground truncate">{user?.fullName || 'User'}</span>
+                <span className="text-[11px] text-sidebar-foreground/55 capitalize">{user?.role || 'Staff'}</span>
+              </div>
             </div>
             <div className="flex items-center gap-0.5 shrink-0">
-              <button onClick={() => { setPwModal(true); setPwError(''); setPwSuccess(''); }} className="p-2 rounded-lg text-sidebar-foreground/50 hover:text-white hover:bg-sidebar-accent transition-all duration-150" title="Change Password">
+              <button onClick={() => { setPwModal(true); setPwError(''); setPwSuccess(''); }} className="p-2 rounded-lg text-sidebar-foreground/55 hover:text-sidebar-accent-foreground hover:bg-sidebar-accent transition-all duration-150" title="Change Password">
                 <KeyRound size={15} />
               </button>
-              <button onClick={logout} className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sidebar-foreground/50 hover:text-white hover:bg-sidebar-accent transition-all duration-150 text-[13px]" title="Logout">
+              <button onClick={logout} className="p-2 rounded-lg text-sidebar-foreground/55 hover:text-sidebar-accent-foreground hover:bg-sidebar-accent transition-all duration-150" title="Logout">
                 <LogOut size={15} />
-                <span>Logout</span>
               </button>
             </div>
           </div>
