@@ -1,0 +1,269 @@
+1. TESTING STRATEGY OVERVIEW
+Platr requires multi-layer testing:
+Core Layers
+Functional Testing
+Business Logic Testing
+Data Integrity Testing
+Integration Testing (POS, modules)
+UI/UX Testing
+Performance Testing
+Security Testing
+Mobile App Testing
+Analytics / Decision Engine Testing
+🔷 2. FUNCTIONAL TESTING (MODULE-WISE)
+2.1 Authentication & Access Control
+login with valid credentials
+login with invalid credentials
+role-based access (owner, manager, store, accounts)
+session timeout
+logout functionality
+restricted page access
+2.2 Sales Module Testing
+Invoice-Based Sales
+create invoice manually
+import invoice via Excel
+import via POS data
+invoice number uniqueness
+GST calculation
+discount handling (invoice-level vs item-level)
+payment mode capture
+Matching Logic
+invoice total = sum of line items
+mismatch detection
+rounding tolerance handling
+Item-Based Sales
+item count aggregation
+item price consistency
+item discount allocation
+item total = day sales total
+2.3 Settlement Module
+enter settlement values (cash/card/QR)
+match vs daily sales
+detect short/excess
+verify settlement
+duplicate settlement prevention
+2.4 Petty Cash Module
+petty cash receipt entry
+petty cash expense entry
+petty cash balance calculation
+linkage with expense module
+ledger correctness
+2.5 Expense Module
+expense entry
+payment mode selection
+petty cash integration
+editing expense updates ledger
+deleting expense rollback logic
+2.6 Vendor Module
+vendor creation
+purchase entry
+bill generation
+payment entry
+bill-wise payment allocation
+partial payment
+full payment
+payment proof upload
+vendor ledger correctness
+overdue detection
+2.7 Inventory Module
+stock update
+stock deduction via consumption
+stock aging
+low stock detection
+dead stock detection
+expiry tracking (only if expiry exists)
+2.8 Waste Module
+waste entry (raw/semi/final)
+waste cost calculation
+stock deduction
+waste reporting
+2.9 Customer Module
+customer creation via POS/sales
+visit tracking
+total spend calculation
+top item detection
+duplicate customer prevention (phone-based)
+🔷 3. BUSINESS LOGIC TESTING (CRITICAL)
+3.1 Costing Engine
+recipe-based cost calculation
+semi-prepared cost roll-up
+final item cost accuracy
+cost change impact
+3.2 Consumption Logic
+theoretical consumption from sales
+comparison with actual stock
+variance calculation
+3.3 Discount Logic
+proportional discount allocation
+line vs invoice discount consistency
+3.4 GST Logic
+inclusive vs exclusive tax handling
+GST consistency across invoice and line
+3.5 Payment Allocation Logic
+payment <= bill pending
+multi-bill allocation
+reversal handling
+🔷 4. DATA INTEGRITY TESTING
+Validate:
+no duplicate invoices
+no orphan invoice lines
+no negative stock (unless allowed)
+no broken vendor-payment links
+no mismatch in totals
+no inconsistent dates
+Cross-check:
+sales total vs settlement
+item total vs invoice total
+vendor payable vs ledger
+petty cash vs expense
+🔷 5. POS INTEGRATION TESTING
+Petpooja / External POS
+invoice import
+item mapping
+customer mapping
+duplicate prevention
+partial import handling
+error logging
+Edge Cases
+missing fields
+wrong item mapping
+duplicate invoice upload
+partial data upload
+🔷 6. DECISION ENGINE TESTING (VERY IMPORTANT)
+6.1 Revenue Intelligence
+revenue leakage detection accuracy
+high discount detection
+margin calculation correctness
+6.2 Customer Intelligence
+CLV calculation
+churn detection logic
+visit frequency prediction
+top item detection
+6.3 Operational Intelligence
+kitchen load (based on orders)
+staff performance logic
+order delay calculation
+6.4 Inventory Intelligence
+variance calculation
+expiry risk (only when expiry exists)
+dead stock detection
+6.5 Financial Intelligence
+settlement mismatch trends
+payment mode analysis
+vendor risk
+6.6 Predictive Engine
+predictive sales output (sanity check)
+demand forecasting accuracy
+alert triggers
+6.7 Alert Engine
+alert triggering conditions
+alert severity classification
+duplicate alert prevention
+🔷 7. UI / UX TESTING
+Website (Platr Site)
+animation smoothness
+scroll behavior
+responsive layout
+CTA visibility
+form submission
+page load speed
+Web App
+navigation flow
+dashboard clarity
+form usability
+error messages
+loading states
+Mobile App
+screen responsiveness
+touch interactions
+form usability
+navigation flow
+low network behavior
+🔷 8. PERFORMANCE TESTING
+Backend
+API response time
+heavy query performance
+concurrent users
+Frontend
+page load speed
+animation smoothness
+memory usage
+Mobile
+app startup time
+screen load time
+API latency handling
+🔷 9. SECURITY TESTING
+Authentication
+token validation
+session hijack prevention
+brute force protection
+Authorization
+role-based access enforcement
+API permission checks
+Data Security
+input validation
+SQL injection prevention
+file upload security
+sensitive data masking
+🔷 10. EDGE CASE TESTING
+Test:
+zero sales day
+negative values
+very large numbers
+missing data
+duplicate data
+partial updates
+concurrent updates
+🔷 11. MOBILE-SPECIFIC TESTING
+offline behavior
+retry mechanism
+app crash handling
+push notification readiness
+background state handling
+🔷 12. REGRESSION TESTING
+After every update:
+sales module
+vendor module
+inventory
+costing
+decision engine
+mobile sync
+Ensure no existing feature breaks.
+🔷 13. AUTOMATION TESTING (RECOMMENDED)
+Automate:
+API tests
+critical flows
+login + role access
+invoice creation
+settlement validation
+🔷 14. UAT (USER ACCEPTANCE TESTING)
+Test with real users:
+cafe owner
+cashier
+store manager
+accounts user
+Check:
+usability
+clarity
+workflow speed
+real-world scenarios
+🔷 15. FINAL PRODUCTION CHECKLIST
+Before go-live:
+all modules tested
+no critical bugs
+performance stable
+security validated
+data consistency verified
+mobile app stable
+POS sync working
+alerts working
+reports accurate
+🔥 FINAL SUMMARY
+Platr testing must ensure:
+✔ financial accuracy
+✔ data consistency
+✔ operational usability
+✔ decision reliability
+✔ performance stability
+✔ mobile readiness
+✔ POS integration correctness
