@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useGetMe, User } from '@workspace/api-client-react';
+import { getGetMeQueryKey, useGetMe, User } from '@workspace/api-client-react';
 import { setAuthTokenGetter, setBaseUrl } from '@workspace/api-client-react/custom-fetch';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -7,7 +7,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   token: string | null;
-  login: (token: string) => void;
+  login: (token: string, user: User) => void;
   logout: () => void;
 }
 
@@ -30,10 +30,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
   });
 
-  const login = (newToken: string) => {
+  const login = (newToken: string, newUser: User) => {
     localStorage.setItem('token', newToken);
+    queryClient.setQueryData(getGetMeQueryKey(), newUser);
     setToken(newToken);
-    refetch();
+    void refetch();
   };
 
   const logout = () => {

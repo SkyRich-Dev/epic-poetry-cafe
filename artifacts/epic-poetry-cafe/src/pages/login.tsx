@@ -16,7 +16,7 @@ export default function Login() {
     setError('');
     try {
       const res = await loginMutation({ data: { username, password } });
-      login(res.token);
+      login(res.token, res.user);
     } catch (err: any) {
       setError(err?.data?.message || 'Invalid credentials. Please try again.');
     }
