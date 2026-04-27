@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter } from '../components/ui-extras';
-import { ArrowLeft, Plus, Upload, ExternalLink, IndianRupee, AlertTriangle, FileText, CreditCard, BookOpen, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Plus, Upload, ExternalLink, IndianRupee, AlertTriangle, FileText, CreditCard, BookOpen, BarChart3, Eye, Download } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -32,6 +32,55 @@ export default function VendorDetailPage() {
   const [paymentModal, setPaymentModal] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ paymentDate: new Date().toISOString().split('T')[0], paymentMethod: 'cash', transactionReference: '', totalAmount: 0, remarks: '', allocations: [] as { purchaseId: number; amount: number }[] });
   const [selectedBills, setSelectedBills] = useState<Map<number, number>>(new Map());
+  const [billDetailOpen, setBillDetailOpen] = useState(false);
+  const [billDetail, setBillDetail] = useState<{ purchase: any; lines: any[] } | null>(null);
+  const [billLoading, setBillLoading] = useState(false);
+  const [downloadingBillId, setDownloadingBillId] = useState<number | null>(null);
+
+  const openBillDetail = async (bill: any) => {
+    setBillDetailOpen(true);
+    setBillDetail(null);
+    setBillLoading(true);
+    try {
+      const data = await apiFetch(`purchases/${bill.id}`);
+      // Merge in financial fields from the bills row (paidAmount, pendingAmount,
+      // dueDate) which the GET /api/purchases/:id endpoint omits.
+      setBillDetail({
+        purchase: { ...bill, ...data.purchase },
+        lines: data.lines,
+      });
+    } catch (e: any) {
+      toast({ title: 'Error loading bill', description: e.message, variant: 'destructive' });
+      setBillDetailOpen(false);
+    } finally {
+      setBillLoading(false);
+    }
+  };
+
+  const downloadBillPdf = async (billId: number, purchaseNumber: string) => {
+    setDownloadingBillId(billId);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${BASE}api/purchases/${billId}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(await res.text() || 'Failed to download PDF');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeVendor = (detail?.vendor?.name || 'vendor').replace(/[^a-zA-Z0-9._-]/g, '_');
+      a.download = `${purchaseNumber}_${safeVendor}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      toast({ title: 'Download failed', description: e.message, variant: 'destructive' });
+    } finally {
+      setDownloadingBillId(null);
+    }
+  };
 
   const loadDetail = useCallback(async () => {
     try { setLoadError(null); const data = await apiFetch(`vendor-detail/${vendorId}`); setDetail(data); }
@@ -191,6 +240,7 @@ export default function VendorDetailPage() {
               <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Paid</th>
               <th className="px-4 py-3 text-right text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Pending</th>
               <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Status</th>
+              <th className="px-4 py-3 text-center text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wide">Actions</th>
             </tr></thead>
             <tbody>{recentBills.map((b: any) => {
               const today = new Date().toISOString().split('T')[0];
@@ -213,6 +263,29 @@ export default function VendorDetailPage() {
                       {isOverdue && <AlertTriangle size={11} />}
                       {isOverdue ? 'Overdue' : b.paymentStatus === 'fully_paid' ? 'Paid' : b.paymentStatus === 'partially_paid' ? 'Partial' : 'Unpaid'}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openBillDetail(b)}
+                        className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        title="View bill details"
+                        data-testid={`button-view-bill-${b.id}`}
+                      >
+                        <Eye size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadBillPdf(b.id, b.purchaseNumber)}
+                        disabled={downloadingBillId === b.id}
+                        className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                        title="Download bill as PDF"
+                        data-testid={`button-download-bill-${b.id}`}
+                      >
+                        <Download size={15} className={downloadingBillId === b.id ? 'animate-pulse' : ''} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -346,6 +419,124 @@ export default function VendorDetailPage() {
             <span className="text-xl font-display font-bold text-primary">{formatCurrency(paymentForm.totalAmount)}</span>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={billDetailOpen}
+        onClose={() => setBillDetailOpen(false)}
+        title={billDetail?.purchase ? `Bill ${billDetail.purchase.purchaseNumber}` : 'Bill Details'}
+        maxWidth="max-w-3xl"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setBillDetailOpen(false)}>Close</Button>
+            {billDetail?.purchase && (
+              <Button
+                onClick={() => downloadBillPdf(billDetail.purchase.id, billDetail.purchase.purchaseNumber)}
+                disabled={downloadingBillId === billDetail.purchase.id}
+                data-testid="button-download-bill-pdf"
+              >
+                <Download size={14} className="mr-1" />
+                {downloadingBillId === billDetail.purchase.id ? 'Downloading…' : 'Download PDF'}
+              </Button>
+            )}
+          </>
+        }
+      >
+        {billLoading && (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading bill…</div>
+        )}
+        {!billLoading && billDetail && (() => {
+          const p = billDetail.purchase;
+          const lines = billDetail.lines || [];
+          const subtotal = lines.reduce((s: number, l: any) => s + (Number(l.quantity || 0) * Number(l.unitRate || 0)), 0);
+          const tax = lines.reduce((s: number, l: any) => s + (Number(l.quantity || 0) * Number(l.unitRate || 0)) * (Number(l.taxPercent || 0) / 100), 0);
+          const total = subtotal + tax;
+          return (
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Bill Date</p>
+                  <p className="font-medium">{formatDate(p.purchaseDate)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Vendor Invoice #</p>
+                  <p className="font-medium">{p.invoiceNumber || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Payment Mode</p>
+                  <p className="font-medium capitalize">{(p.paymentMode || '—').toString().replace(/_/g, ' ')}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <p className="font-medium capitalize">{(p.paymentStatus || '—').toString().replace(/_/g, ' ')}</p>
+                </div>
+              </div>
+
+              {detail?.vendor && (
+                <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
+                  <p className="text-xs text-muted-foreground mb-1">Vendor</p>
+                  <p className="font-semibold">{detail.vendor.name}</p>
+                  <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                    {detail.vendor.contactPerson && <div>Contact: {detail.vendor.contactPerson}</div>}
+                    {detail.vendor.mobile && <div>Mobile: {detail.vendor.mobile}</div>}
+                    {detail.vendor.email && <div>Email: {detail.vendor.email}</div>}
+                    {detail.vendor.address && <div>Address: {detail.vendor.address}</div>}
+                    {detail.vendor.gstNumber && <div>GST: {detail.vendor.gstNumber}</div>}
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-x-auto rounded-xl border border-border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/50">
+                      <th className="px-3 py-2 text-left text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-wide w-8">#</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-wide">Item</th>
+                      <th className="px-3 py-2 text-right text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-wide">Qty</th>
+                      <th className="px-3 py-2 text-right text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-wide">Rate</th>
+                      <th className="px-3 py-2 text-right text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-wide">Tax %</th>
+                      <th className="px-3 py-2 text-right text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-wide">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.length === 0 ? (
+                      <tr><td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">No line items</td></tr>
+                    ) : lines.map((l: any, i: number) => (
+                      <tr key={l.id} className="border-t border-border">
+                        <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
+                        <td className="px-3 py-2">
+                          <div className="font-medium">{l.ingredientName || '—'}</div>
+                          {l.purchaseUom && <div className="text-xs text-muted-foreground">{l.purchaseUom}</div>}
+                        </td>
+                        <td className="px-3 py-2 text-right font-numbers">{Number(l.quantity || 0)}</td>
+                        <td className="px-3 py-2 text-right font-numbers">{formatCurrency(l.unitRate)}</td>
+                        <td className="px-3 py-2 text-right font-numbers">{Number(l.taxPercent || 0)}%</td>
+                        <td className="px-3 py-2 text-right font-numbers font-semibold">{formatCurrency(l.lineTotal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end">
+                <div className="w-full md:w-72 space-y-1.5 text-sm">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="font-numbers">{formatCurrency(subtotal)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Tax</span><span className="font-numbers">{formatCurrency(tax)}</span></div>
+                  <div className="flex justify-between border-t border-border pt-1.5"><span className="font-semibold text-primary">Grand Total</span><span className="font-numbers font-bold text-primary">{formatCurrency(total)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Paid</span><span className="font-numbers text-emerald-600">{formatCurrency(p.paidAmount ?? 0)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Pending</span><span className="font-numbers text-amber-600">{formatCurrency(p.pendingAmount ?? Math.max(total - (p.paidAmount ?? 0), 0))}</span></div>
+                </div>
+              </div>
+
+              {(p.notes || p.remarks) && (
+                <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm">
+                  <p className="text-xs text-muted-foreground mb-1">Remarks</p>
+                  <p>{p.notes || p.remarks}</p>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );

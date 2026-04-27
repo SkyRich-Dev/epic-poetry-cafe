@@ -154,7 +154,9 @@ export default function Purchases() {
 
           <div>
             <div className="flex justify-between items-end mb-3">
-              <h3 className="font-semibold text-foreground">Items Received</h3>
+              <h3 className="font-semibold text-foreground">
+                Items Received <span className="text-muted-foreground font-normal">({lines.length})</span>
+              </h3>
               <Button variant="outline" size="sm" onClick={addLine}><Plus size={14}/> Add Row</Button>
             </div>
             

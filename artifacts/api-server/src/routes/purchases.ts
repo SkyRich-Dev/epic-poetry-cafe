@@ -6,8 +6,167 @@ import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
 import { generateCode } from "../lib/codeGenerator";
 import { validateNotFutureDate } from "../lib/dateValidation";
+import PDFDocument from "pdfkit";
 
 const router: IRouter = Router();
+
+function fmtMoney(n: number): string {
+  return `${(Math.round((n || 0) * 100) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtDateLabel(s?: string | null): string {
+  if (!s) return "-";
+  const d = new Date(s + (s.length === 10 ? "T00:00:00Z" : ""));
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "2-digit" });
+}
+
+function generateBillPdf(data: {
+  purchase: any;
+  vendor: any;
+  lines: any[];
+  totals: { subtotal: number; tax: number; total: number; paid: number; pending: number };
+}): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: "A4", margin: 40 });
+    const chunks: Buffer[] = [];
+    doc.on("data", (c) => chunks.push(c));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const { purchase, vendor, lines, totals } = data;
+    const pageW = doc.page.width - 80;
+
+    // Header
+    doc.fontSize(18).fillColor("#6750A4").font("Helvetica-Bold")
+      .text("Epic Poetry Cafe", 40, 40);
+    doc.fontSize(9).fillColor("#666").font("Helvetica")
+      .text("Vendor Bill / Purchase Invoice", 40, 62);
+
+    // Title block (right)
+    doc.fontSize(14).fillColor("#222").font("Helvetica-Bold")
+      .text(`Bill ${purchase.purchaseNumber}`, 40, 40, { width: pageW, align: "right" });
+    doc.fontSize(9).fillColor("#666").font("Helvetica")
+      .text(`Date: ${fmtDateLabel(purchase.purchaseDate)}`, 40, 60, { width: pageW, align: "right" });
+    if (purchase.invoiceNumber) {
+      doc.text(`Vendor Invoice #: ${purchase.invoiceNumber}`, 40, 74, { width: pageW, align: "right" });
+    }
+
+    let y = 100;
+    doc.moveTo(40, y).lineTo(40 + pageW, y).strokeColor("#6750A4").lineWidth(1).stroke();
+    y += 12;
+
+    // Vendor info
+    doc.fontSize(10).fillColor("#222").font("Helvetica-Bold").text("Vendor", 40, y);
+    y += 14;
+    doc.fontSize(10).fillColor("#000").font("Helvetica-Bold").text(vendor?.name || "—", 40, y);
+    y += 13;
+    doc.font("Helvetica").fontSize(9).fillColor("#444");
+    if (vendor?.contactPerson) { doc.text(`Contact: ${vendor.contactPerson}`, 40, y); y += 12; }
+    if (vendor?.mobile) { doc.text(`Mobile: ${vendor.mobile}`, 40, y); y += 12; }
+    if (vendor?.email) { doc.text(`Email: ${vendor.email}`, 40, y); y += 12; }
+    if (vendor?.address) { doc.text(`Address: ${vendor.address}`, 40, y, { width: pageW * 0.7 }); y += 12; }
+    if (vendor?.gstNumber) { doc.text(`GST: ${vendor.gstNumber}`, 40, y); y += 12; }
+
+    y += 8;
+
+    // Bill meta
+    const metaPairs: Array<[string, string]> = [
+      ["Payment Mode", String(purchase.paymentMode || "-")],
+      ["Payment Status", String(purchase.paymentStatus || "-").replace(/_/g, " ")],
+      ["Due Date", fmtDateLabel(purchase.dueDate)],
+    ];
+    doc.fontSize(9).fillColor("#444");
+    metaPairs.forEach(([label, value]) => {
+      doc.font("Helvetica-Bold").text(`${label}: `, 40, y, { continued: true });
+      doc.font("Helvetica").text(value);
+      y += 12;
+    });
+
+    y += 8;
+
+    // Items table
+    const cols = [
+      { key: "sn", label: "#", w: 24, align: "left" as const },
+      { key: "name", label: "Item", w: pageW - 24 - 50 - 70 - 50 - 70, align: "left" as const },
+      { key: "qty", label: "Qty", w: 50, align: "right" as const },
+      { key: "rate", label: "Rate", w: 70, align: "right" as const },
+      { key: "tax", label: "Tax %", w: 50, align: "right" as const },
+      { key: "total", label: "Amount", w: 70, align: "right" as const },
+    ];
+    const rowH = 18;
+    const drawHeader = () => {
+      doc.rect(40, y, pageW, rowH).fill("#6750A4");
+      let x = 40;
+      doc.fillColor("#fff").font("Helvetica-Bold").fontSize(9);
+      cols.forEach((c) => {
+        doc.text(c.label, x + 4, y + 5, { width: c.w - 8, align: c.align, lineBreak: false });
+        x += c.w;
+      });
+      y += rowH;
+      doc.fillColor("#000").font("Helvetica");
+    };
+    drawHeader();
+
+    lines.forEach((l: any, idx: number) => {
+      if (y > doc.page.height - 140) {
+        doc.addPage({ size: "A4", margin: 40 });
+        y = 40;
+        drawHeader();
+      }
+      const rowVals: Record<string, string> = {
+        sn: String(idx + 1),
+        name: `${l.ingredientName || "—"}${l.purchaseUom ? ` (${l.purchaseUom})` : ""}`,
+        qty: Number(l.quantity || 0).toLocaleString("en-IN"),
+        rate: fmtMoney(Number(l.unitRate || 0)),
+        tax: `${Number(l.taxPercent || 0)}%`,
+        total: fmtMoney(Number(l.lineTotal || 0)),
+      };
+      let x = 40;
+      doc.fontSize(9).fillColor("#000").font("Helvetica");
+      cols.forEach((c) => {
+        doc.text(rowVals[c.key], x + 4, y + 5, { width: c.w - 8, align: c.align, lineBreak: false, ellipsis: true });
+        x += c.w;
+      });
+      doc.strokeColor("#e6e6e6").lineWidth(0.5).moveTo(40, y + rowH).lineTo(40 + pageW, y + rowH).stroke();
+      y += rowH;
+    });
+
+    y += 12;
+    if (y > doc.page.height - 140) { doc.addPage({ size: "A4", margin: 40 }); y = 40; }
+
+    // Totals box
+    const tx = 40 + pageW - 220;
+    const tw = 220;
+    const drawTotalRow = (label: string, value: string, opts?: { bold?: boolean; color?: string }) => {
+      doc.fontSize(opts?.bold ? 11 : 10).fillColor(opts?.color || "#222").font(opts?.bold ? "Helvetica-Bold" : "Helvetica");
+      doc.text(label, tx, y, { width: tw - 90, align: "left" });
+      doc.text(value, tx + tw - 90, y, { width: 90, align: "right" });
+      y += opts?.bold ? 16 : 14;
+    };
+    drawTotalRow("Subtotal", fmtMoney(totals.subtotal));
+    drawTotalRow("Tax", fmtMoney(totals.tax));
+    doc.strokeColor("#cccccc").lineWidth(0.5).moveTo(tx, y).lineTo(tx + tw, y).stroke();
+    y += 4;
+    drawTotalRow("Grand Total", fmtMoney(totals.total), { bold: true, color: "#6750A4" });
+    drawTotalRow("Paid", fmtMoney(totals.paid), { color: "#059669" });
+    drawTotalRow("Pending", fmtMoney(totals.pending), { color: totals.pending > 0 ? "#d97706" : "#059669" });
+
+    if (purchase.notes || purchase.remarks) {
+      y += 12;
+      doc.fontSize(9).fillColor("#444").font("Helvetica-Bold").text("Remarks", 40, y);
+      y += 12;
+      doc.font("Helvetica").fillColor("#222").text(String(purchase.notes || purchase.remarks || ""), 40, y, { width: pageW });
+    }
+
+    // Footer
+    const footerY = doc.page.height - 40;
+    doc.fontSize(8).fillColor("#999").font("Helvetica")
+      .text(`Generated ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`, 40, footerY, { width: pageW, align: "center" });
+
+    doc.end();
+  });
+}
 
 router.get("/purchases", async (req, res): Promise<void> => {
   const conditions = [];
@@ -178,6 +337,55 @@ router.get("/purchases/:id", async (req, res): Promise<void> => {
     .where(eq(purchaseLinesTable.purchaseId, params.data.id));
 
   res.json(GetPurchaseResponse.parse({ purchase, lines }));
+});
+
+router.get("/purchases/:id/pdf", authMiddleware, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [purchase] = await db.select().from(purchasesTable).where(eq(purchasesTable.id, id));
+  if (!purchase) { res.status(404).json({ error: "Not found" }); return; }
+
+  const [vendor] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, purchase.vendorId));
+
+  const lines = await db
+    .select({
+      id: purchaseLinesTable.id,
+      ingredientId: purchaseLinesTable.ingredientId,
+      ingredientName: ingredientsTable.name,
+      quantity: purchaseLinesTable.quantity,
+      purchaseUom: purchaseLinesTable.purchaseUom,
+      unitRate: purchaseLinesTable.unitRate,
+      taxPercent: purchaseLinesTable.taxPercent,
+      lineTotal: purchaseLinesTable.lineTotal,
+      expiryDate: purchaseLinesTable.expiryDate,
+    })
+    .from(purchaseLinesTable)
+    .leftJoin(ingredientsTable, eq(purchaseLinesTable.ingredientId, ingredientsTable.id))
+    .where(eq(purchaseLinesTable.purchaseId, id));
+
+  let subtotal = 0;
+  let tax = 0;
+  for (const l of lines) {
+    const base = (l.quantity || 0) * (l.unitRate || 0);
+    subtotal += base;
+    tax += base * ((l.taxPercent || 0) / 100);
+  }
+  const total = subtotal + tax;
+  const totals = {
+    subtotal,
+    tax,
+    total,
+    paid: purchase.paidAmount || 0,
+    pending: purchase.pendingAmount ?? Math.max(total - (purchase.paidAmount || 0), 0),
+  };
+
+  const buf = await generateBillPdf({ purchase, vendor, lines, totals });
+  const safeVendor = (vendor?.name || "vendor").replace(/[^a-zA-Z0-9._-]/g, "_");
+  const filename = `${purchase.purchaseNumber}_${safeVendor}.pdf`;
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(buf);
 });
 
 router.patch("/purchases/:id/verify", authMiddleware, adminOnly, async (req, res): Promise<void> => {

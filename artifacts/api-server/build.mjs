@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { rm, cp, access } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -120,7 +120,28 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   });
 }
 
-buildAll().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+async function copyPdfkitFontData() {
+  // PDFKit's standard 14 fonts (Helvetica, Times, Courier, Symbol, ZapfDingbats)
+  // are loaded at runtime from a `data/` folder relative to the bundle's
+  // `__dirname`. esbuild does not bundle these .afm files, so we copy them
+  // alongside the dist output to keep PDF generation working.
+  const distDir = path.resolve(artifactDir, "dist");
+  const require_ = createRequire(import.meta.url);
+  let pdfkitDataDir;
+  try {
+    const pdfkitMain = require_.resolve("pdfkit");
+    pdfkitDataDir = path.join(path.dirname(pdfkitMain), "data");
+    await access(pdfkitDataDir);
+  } catch {
+    // pdfkit not installed — nothing to copy.
+    return;
+  }
+  await cp(pdfkitDataDir, path.join(distDir, "data"), { recursive: true });
+}
+
+buildAll()
+  .then(copyPdfkitFontData)
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
