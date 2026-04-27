@@ -1,14 +1,16 @@
-import { Router } from "express";
-import { db, posIntegrationsTable, menuItemsTable, categoriesTable,
-  salesInvoicesTable, salesInvoiceLinesTable, salesImportBatchesTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { Router, type IRouter } from "express";
+import { db, posIntegrationsTable, posSyncLogsTable, menuItemsTable, categoriesTable,
+  salesInvoicesTable, salesImportBatchesTable } from "@workspace/db";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
-import { isFutureDate } from "../lib/dateValidation";
-import { generateCode } from "../lib/codeGenerator";
+import { importPetpoojaOrder, upsertPetpoojaCustomer } from "../lib/petpoojaImporter";
+import { fetchFromPos, getProviderCapabilities, POS_DATA_TYPES, POS_DATA_TYPE_LABELS,
+  PosFetchError, type PosDataType } from "../lib/posProviders";
+import { isValidIsoDate } from "../lib/dateValidation";
 import crypto from "crypto";
 
-const router = Router();
+const router: IRouter = Router();
 
 function redactSecrets(obj: any) {
   if (!obj) return obj;
@@ -211,225 +213,212 @@ router.post("/webhook/petpooja/:integrationId", async (req, res): Promise<void> 
     res.status(400).json({ error: "Missing Order or OrderItem in payload" }); return;
   }
 
-  const allCategories = await db.select().from(categoriesTable);
-  const categoryByName = new Map(allCategories.map(c => [c.name.toLowerCase().trim(), c]));
-
-  const allMenuItems = await db.select().from(menuItemsTable);
-  const menuByName = new Map(allMenuItems.map(m => [m.name.toLowerCase().trim(), m]));
-
-  const autoCreated: string[] = [];
-
   try {
-    const createdOn = ppOrder.created_on || "";
-    const salesDate = createdOn ? createdOn.split(" ")[0] : new Date().toISOString().split("T")[0];
-    const invoiceTime = createdOn ? createdOn.split(" ")[1] || "" : "";
-    const invoiceNo = `PP-${ppOrder.customer_invoice_id || ppOrder.orderID || Date.now()}`;
-
-    if (isFutureDate(salesDate)) {
-      res.status(400).json({ error: `Order date cannot be in the future (${salesDate})` }); return;
+    const result = await importPetpoojaOrder({ ppOrder, ppItems, ppCustomer, integration });
+    if (!result.created) {
+      res.json({ success: true, skipped: true, message: `Order ${result.invoiceNo} was already imported`, invoiceNo: result.invoiceNo });
+      return;
     }
-
-    const rawOrderType = (ppOrder.order_type || "").toLowerCase().replace(/\s+/g, "-");
-    const orderType = rawOrderType || integration.defaultOrderType || "dine-in";
-    const customerName = ppCustomer?.name || "";
-
-    let paymentMode = (ppOrder.payment_type || "cash").toLowerCase();
-    const partPayments = ppOrder.part_payments;
-    if (paymentMode === "part payment" && Array.isArray(partPayments) && partPayments.length > 0) {
-      paymentMode = "mixed";
+    if (ppCustomer) {
+      try { await upsertPetpoojaCustomer({ name: ppCustomer.name, phone: ppCustomer.phone, email: ppCustomer.email }); } catch {}
     }
-    if (paymentMode === "online") {
-      const subOrderType = (ppOrder.sub_order_type || "").toLowerCase();
-      if (subOrderType === "zomato" || subOrderType === "swiggy") paymentMode = subOrderType;
-    }
-
-    const totalDiscount = Number(ppOrder.discount_total || 0);
-    const orderTaxTotal = Number(ppOrder.tax_total || 0);
-    const ppTotal = Number(ppOrder.total || 0);
-    const serviceCharge = Number(ppOrder.service_charge || 0);
-    const packagingCharge = Number(ppOrder.packaging_charge || 0);
-    const deliveryCharges = Number(ppOrder.delivery_charges || 0);
-
-    const lineData: any[] = [];
-
-    for (const item of ppItems) {
-      const ppItemName = String(item.name || "").trim();
-      const ppCategoryName = String(item.category_name || "").trim();
-      const qty = Number(item.quantity || 1);
-      const itemPrice = Number(item.price || 0);
-      const itemTotal = Number(item.total || itemPrice * qty);
-      const itemDiscount = Number(item.discount || 0);
-      const itemTax = Number(item.tax || 0);
-
-      let addonTotal = 0;
-      if (Array.isArray(item.addon)) {
-        for (const addon of item.addon) {
-          addonTotal += Number(addon.price || 0) * Number(addon.quantity || 1);
-        }
-      }
-
-      let menuItem = menuByName.get(ppItemName.toLowerCase().trim());
-
-      if (!menuItem) {
-        let categoryId: number | null = null;
-        if (ppCategoryName) {
-          let category = categoryByName.get(ppCategoryName.toLowerCase().trim());
-          if (!category) {
-            const [newCat] = await db.insert(categoriesTable).values({
-              name: ppCategoryName,
-              type: "menu",
-            }).returning();
-            category = newCat;
-            categoryByName.set(ppCategoryName.toLowerCase().trim(), category);
-            autoCreated.push(`Category: ${ppCategoryName}`);
-          }
-          categoryId = category.id;
-        }
-
-        const code = await generateCode("PP", "menu_items");
-        const [newItem] = await db.insert(menuItemsTable).values({
-          code,
-          name: ppItemName,
-          categoryId,
-          sellingPrice: itemPrice,
-          active: true,
-        }).returning();
-        menuItem = newItem;
-        menuByName.set(ppItemName.toLowerCase().trim(), menuItem);
-        autoCreated.push(`Menu Item: ${ppItemName} (${code}) @ ₹${itemPrice}`);
-      }
-
-      const usePrice = itemTotal > 0 ? itemTotal / qty : (menuItem.sellingPrice || itemPrice);
-      const grossWithAddons = (usePrice * qty) + addonTotal;
-
-      lineData.push({
-        menuItemId: menuItem.id,
-        itemCodeSnapshot: menuItem.code,
-        itemNameSnapshot: menuItem.name,
-        fixedPrice: usePrice,
-        quantity: qty,
-        grossLineAmount: grossWithAddons,
-        ppItemDiscount: itemDiscount,
-        ppItemTax: itemTax,
-        gstPercent: integration.defaultGstPercent || 5,
-      });
-    }
-
-    let grossAmount = lineData.reduce((s, l) => s + l.grossLineAmount, 0);
-
-    let totalGst = 0;
-    let totalTaxable = 0;
-    let totalFinal = 0;
-
-    const useOrderLevelTax = orderTaxTotal > 0;
-    const discountRatio = grossAmount > 0 ? totalDiscount / grossAmount : 0;
-
-    const finalLines = lineData.map(l => {
-      const lineDiscount = l.ppItemDiscount > 0
-        ? l.ppItemDiscount
-        : Math.round(l.grossLineAmount * discountRatio * 100) / 100;
-      const taxable = l.grossLineAmount - lineDiscount;
-
-      let gst: number;
-      if (useOrderLevelTax && grossAmount > 0) {
-        gst = Math.round((l.grossLineAmount / grossAmount) * orderTaxTotal * 100) / 100;
-      } else if (l.ppItemTax > 0) {
-        gst = l.ppItemTax;
-      } else {
-        gst = Math.round(taxable * l.gstPercent / 100 * 100) / 100;
-      }
-
-      const finalAmt = taxable + gst;
-      totalGst += gst;
-      totalTaxable += taxable;
-      totalFinal += finalAmt;
-      return {
-        menuItemId: l.menuItemId,
-        itemCodeSnapshot: l.itemCodeSnapshot,
-        itemNameSnapshot: l.itemNameSnapshot,
-        fixedPrice: l.fixedPrice,
-        quantity: l.quantity,
-        grossLineAmount: Math.round(l.grossLineAmount * 100) / 100,
-        lineDiscountAmount: Math.round(lineDiscount * 100) / 100,
-        discountedUnitPrice: l.quantity > 0 ? Math.round((l.grossLineAmount - lineDiscount) / l.quantity * 100) / 100 : 0,
-        taxableLineAmount: Math.round(taxable * 100) / 100,
-        gstPercent: l.gstPercent,
-        gstAmount: Math.round(gst * 100) / 100,
-        finalLineAmount: Math.round(finalAmt * 100) / 100,
-      };
-    });
-
-    const invoiceFinal = ppTotal > 0 ? ppTotal : Math.round(totalFinal * 100) / 100;
-
-    const refParts: string[] = [];
-    if (Array.isArray(partPayments) && partPayments.length > 0) {
-      refParts.push(partPayments.map((pp: any) =>
-        `${pp.payment_type || pp.custome_payment_type || "Other"}: ₹${pp.amount}`
-      ).join(", "));
-    }
-    if (ppOrder.order_from && ppOrder.order_from !== "POS") {
-      let src = ppOrder.order_from;
-      if (ppOrder.order_from_id) src += ` #${ppOrder.order_from_id}`;
-      refParts.push(src);
-    }
-    if (ppOrder.table_no) refParts.push(`Table: ${ppOrder.table_no}`);
-    if (ppOrder.biller) refParts.push(`Biller: ${ppOrder.biller}`);
-    if (ppOrder.comment) refParts.push(`Note: ${ppOrder.comment}`);
-    if (serviceCharge > 0) refParts.push(`Service Charge: ₹${serviceCharge}`);
-    if (packagingCharge > 0) refParts.push(`Packaging: ₹${packagingCharge}`);
-    if (deliveryCharges > 0) refParts.push(`Delivery: ₹${deliveryCharges}`);
-    const paymentRef = refParts.join(" | ");
-
-    await db.transaction(async (tx) => {
-      const [invoice] = await tx.insert(salesInvoicesTable).values({
-        salesDate,
-        invoiceNo,
-        invoiceTime,
-        sourceType: "petpooja",
-        orderType,
-        customerName: customerName || null,
-        grossAmount: Math.round(grossAmount * 100) / 100,
-        totalDiscount: Math.round(totalDiscount * 100) / 100,
-        taxableAmount: Math.round(totalTaxable * 100) / 100,
-        gstAmount: Math.round(totalGst * 100) / 100,
-        finalAmount: Math.round(invoiceFinal * 100) / 100,
-        paymentMode,
-        paymentReference: paymentRef || null,
-        matchStatus: "matched",
-        matchDifference: 0,
-      }).returning();
-
-      for (const line of finalLines) {
-        await tx.insert(salesInvoiceLinesTable).values({
-          invoiceId: invoice.id,
-          ...line,
-        });
-      }
-    });
-
-    await updateSyncStatus(integrationId, 1, 0);
-
     res.json({
       success: true,
-      message: `Order ${invoiceNo} processed successfully`,
-      autoCreated: autoCreated.length > 0 ? autoCreated : undefined,
+      message: `Order ${result.invoiceNo} processed successfully`,
+      autoCreated: result.autoCreated.length > 0 ? result.autoCreated : undefined,
     });
   } catch (e: any) {
-    await updateSyncStatus(integrationId, 0, 1);
-    res.status(500).json({
-      success: false,
-      message: `Order processing failed: ${e.message}`,
-    });
+    await updateSyncStatusFailed(integrationId);
+    res.status(500).json({ success: false, message: `Order processing failed: ${e.message}` });
   }
 });
 
-async function updateSyncStatus(integrationId: number, success: number, failed: number) {
+async function updateSyncStatusFailed(integrationId: number) {
   await db.update(posIntegrationsTable).set({
     lastSyncAt: new Date(),
-    lastSyncStatus: failed === 0 ? "success" : "failed",
-    lastSyncMessage: success > 0 ? `${success} synced` : `${failed} failed`,
-    totalOrdersSynced: sql`${posIntegrationsTable.totalOrdersSynced} + ${success}`,
+    lastSyncStatus: "failed",
+    lastSyncMessage: "1 failed",
   }).where(eq(posIntegrationsTable.id, integrationId));
 }
+
+// === Manual fetch capabilities + endpoints ===
+
+router.get("/pos-integrations/:id/capabilities", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [integration] = await db.select().from(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
+  if (!integration) { res.status(404).json({ error: "Not found" }); return; }
+  const matrix = getProviderCapabilities(integration.provider);
+  const dataTypes = POS_DATA_TYPES.map((dt) => ({
+    key: dt,
+    label: POS_DATA_TYPE_LABELS[dt],
+    status: matrix[dt].status,
+    hint: matrix[dt].hint,
+  }));
+  res.json({ provider: integration.provider, dataTypes });
+});
+
+router.get("/pos-integrations/:id/sync-logs", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const rawLimit = req.query.limit;
+  let limit = 20;
+  if (rawLimit !== undefined) {
+    const n = Number(rawLimit);
+    if (!Number.isInteger(n) || n < 1 || n > 100) {
+      res.status(400).json({ error: "limit must be an integer between 1 and 100" }); return;
+    }
+    limit = n;
+  }
+  const [integration] = await db.select().from(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
+  if (!integration) { res.status(404).json({ error: "Not found" }); return; }
+  const rows = await db.select().from(posSyncLogsTable)
+    .where(eq(posSyncLogsTable.integrationId, id))
+    .orderBy(desc(posSyncLogsTable.createdAt))
+    .limit(limit);
+  res.json({ logs: rows });
+});
+
+const FETCH_RATE_LIMIT_MS = 30_000;
+
+router.post("/pos-integrations/:id/fetch", authMiddleware, adminOnly, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const [integration] = await db.select().from(posIntegrationsTable).where(eq(posIntegrationsTable.id, id));
+  if (!integration) { res.status(404).json({ error: "Not found" }); return; }
+  if (!integration.active) { res.status(400).json({ error: "Integration is inactive" }); return; }
+
+  const { dataTypes, from, to } = req.body || {};
+  if (!Array.isArray(dataTypes) || dataTypes.length === 0) {
+    res.status(400).json({ error: "dataTypes (array of POS data types) is required" }); return;
+  }
+  for (const dt of dataTypes) {
+    if (!POS_DATA_TYPES.includes(dt)) {
+      res.status(400).json({ error: `Unknown data type: ${dt}` }); return;
+    }
+  }
+  if (!from || !to) {
+    res.status(400).json({ error: "from and to dates are required (YYYY-MM-DD)" }); return;
+  }
+  if (!isValidIsoDate(from) || !isValidIsoDate(to)) {
+    res.status(400).json({ error: "Dates must be valid calendar dates in YYYY-MM-DD format" }); return;
+  }
+  const fromMs = Date.parse(from + "T00:00:00Z");
+  const toMs = Date.parse(to + "T23:59:59Z");
+  const todayMs = Date.parse(new Date().toISOString().split("T")[0] + "T23:59:59Z");
+  if (fromMs > toMs) {
+    res.status(400).json({ error: "from must be on or before to" }); return;
+  }
+  if (toMs > todayMs) {
+    res.status(400).json({ error: "to date cannot be in the future" }); return;
+  }
+  const rangeDays = Math.ceil((toMs - fromMs) / 86_400_000) + 1;
+  if (rangeDays > 90) {
+    res.status(400).json({ error: "Date range cannot exceed 90 days" }); return;
+  }
+
+  if (integration.lastManualFetchAt) {
+    const elapsed = Date.now() - integration.lastManualFetchAt.getTime();
+    if (elapsed < FETCH_RATE_LIMIT_MS) {
+      const waitS = Math.ceil((FETCH_RATE_LIMIT_MS - elapsed) / 1000);
+      res.status(429).json({ error: `Please wait ${waitS}s before triggering another fetch on this integration` });
+      return;
+    }
+  }
+  await db.update(posIntegrationsTable).set({ lastManualFetchAt: new Date() })
+    .where(eq(posIntegrationsTable.id, integration.id));
+
+  const userLabel = (req as any).user?.username || (req as any).user?.email || "admin";
+  const results: Record<string, { status: string; count: number; errorCount: number; message: string }> = {};
+
+  // De-dupe data types so we don't fetch sales twice
+  const uniqueTypes = Array.from(new Set(dataTypes)) as PosDataType[];
+
+  // Cache fetched orders so customers/bills don't re-fetch the same window
+  let cachedOrders: any[] | null = null;
+  async function getOrders(): Promise<any[]> {
+    if (cachedOrders) return cachedOrders;
+    const r = await fetchFromPos(integration, "sales", { from, to });
+    cachedOrders = r.records;
+    return cachedOrders;
+  }
+
+  for (const dataType of uniqueTypes) {
+    const startedAt = Date.now();
+    let status = "failed";
+    let recordCount = 0;
+    let errorCount = 0;
+    let message = "";
+
+    try {
+      if (dataType === "sales" || dataType === "bills") {
+        const orders = await getOrders();
+        let created = 0;
+        let skipped = 0;
+        for (const raw of orders) {
+          const ppOrder = raw.Order || raw.order || raw;
+          const ppItems = raw.OrderItem || raw.OrderItems || raw.items || raw.order_items || [];
+          const ppCustomer = raw.Customer || raw.customer || null;
+          if (!ppOrder || !Array.isArray(ppItems) || ppItems.length === 0) { errorCount++; continue; }
+          try {
+            const r = await importPetpoojaOrder({ ppOrder, ppItems, ppCustomer, integration });
+            if (r.created) created++; else skipped++;
+          } catch (e: any) {
+            errorCount++;
+          }
+        }
+        recordCount = created;
+        status = errorCount === 0 ? "success" : (created > 0 ? "partial" : "failed");
+        message = `${created} ${dataType === "bills" ? "bills" : "orders"} imported, ${skipped} already existed${errorCount ? `, ${errorCount} errors` : ""} (out of ${orders.length} fetched)`;
+      } else if (dataType === "customers") {
+        const orders = await getOrders();
+        let created = 0;
+        let updated = 0;
+        for (const raw of orders) {
+          const c = raw.Customer || raw.customer || null;
+          if (!c) continue;
+          try {
+            const r = await upsertPetpoojaCustomer({ name: c.name, phone: c.phone, email: c.email });
+            if (r === "created") created++;
+            else if (r === "updated") updated++;
+          } catch {
+            errorCount++;
+          }
+        }
+        recordCount = created + updated;
+        status = errorCount === 0 ? "success" : (recordCount > 0 ? "partial" : "failed");
+        message = `${created} customers created, ${updated} updated${errorCount ? `, ${errorCount} errors` : ""}`;
+      } else {
+        // vendors / purchases / menu_items — provider says not_supported, this throws PosFetchError
+        await fetchFromPos(integration, dataType, { from, to });
+        status = "failed";
+        message = `${dataType} not supported`;
+      }
+    } catch (e: any) {
+      if (e instanceof PosFetchError) {
+        status = e.code === "unsupported" || e.code === "webhook_only" ? "skipped" : "failed";
+        message = e.message;
+      } else {
+        status = "failed";
+        message = e?.message || "Unknown error";
+      }
+    }
+
+    const durationMs = Date.now() - startedAt;
+    await db.insert(posSyncLogsTable).values({
+      integrationId: integration.id,
+      dataType,
+      status,
+      recordCount,
+      errorCount,
+      fromDate: from,
+      toDate: to,
+      message: message.slice(0, 1000),
+      triggeredBy: userLabel,
+      durationMs,
+    });
+
+    results[dataType] = { status, count: recordCount, errorCount, message };
+  }
+
+  res.json({ results });
+});
 
 export default router;

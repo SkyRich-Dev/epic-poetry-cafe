@@ -1,4 +1,4 @@
-import { pgTable, text, serial, boolean, integer, doublePrecision, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, boolean, integer, doublePrecision, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { menuItemsTable } from "./menuItems";
 
 export const salesInvoicesTable = pgTable("sales_invoices", {
@@ -28,7 +28,9 @@ export const salesInvoicesTable = pgTable("sales_invoices", {
   updatedBy: integer("updated_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (t) => ({
+  sourceInvoiceUnique: uniqueIndex("sales_invoices_source_invoice_unique").on(t.sourceType, t.invoiceNo),
+}));
 
 export const salesInvoiceLinesTable = pgTable("sales_invoice_lines", {
   id: serial("id").primaryKey(),

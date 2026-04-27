@@ -1007,6 +1007,15 @@ function POSIntegrationsTab() {
   const [stats, setStats] = useState<any>(null);
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<any>(null);
+  const [capabilities, setCapabilities] = useState<any>(null);
+  const [syncLogs, setSyncLogs] = useState<any[]>([]);
+  const todayIso = () => new Date().toISOString().split('T')[0];
+  const daysAgoIso = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0]; };
+  const [fetchFrom, setFetchFrom] = useState<string>(daysAgoIso(7));
+  const [fetchTo, setFetchTo] = useState<string>(todayIso());
+  const [selectedTypes, setSelectedTypes] = useState<Record<string, boolean>>({ sales: true, customers: true });
+  const [fetching, setFetching] = useState(false);
+  const [fetchResults, setFetchResults] = useState<Record<string, any> | null>(null);
 
   const [form, setForm] = useState({
     name: '', provider: 'petpooja', apiKey: '', apiSecret: '', restaurantId: '', baseUrl: '',
@@ -1069,10 +1078,43 @@ function POSIntegrationsTab() {
     } catch (e: any) { toast({ title: 'Error', description: e.message, variant: 'destructive' }); }
   };
 
+  const loadSyncLogs = async (id: number) => {
+    try { const d = await posApiFetch(`pos-integrations/${id}/sync-logs?limit=20`); setSyncLogs(d.logs || []); } catch { setSyncLogs([]); }
+  };
+
   const viewDetail = async (i: any) => {
     setDetailView(i);
     setWebhookSecret(null);
+    setCapabilities(null);
+    setFetchResults(null);
+    setSelectedTypes({ sales: true, customers: true });
+    setFetchFrom(daysAgoIso(7));
+    setFetchTo(todayIso());
     try { const s = await posApiFetch(`pos-integrations/${i.id}/stats`); setStats(s); } catch { setStats(null); }
+    try { const c = await posApiFetch(`pos-integrations/${i.id}/capabilities`); setCapabilities(c); } catch { setCapabilities(null); }
+    loadSyncLogs(i.id);
+  };
+
+  const handleFetchFromPos = async () => {
+    if (!detailView) return;
+    const dataTypes = Object.entries(selectedTypes).filter(([, v]) => v).map(([k]) => k);
+    if (dataTypes.length === 0) { toast({ title: 'Select at least one data type', variant: 'destructive' }); return; }
+    if (!fetchFrom || !fetchTo) { toast({ title: 'Pick a from and to date', variant: 'destructive' }); return; }
+    if (fetchFrom > fetchTo) { toast({ title: 'From date must be on or before To date', variant: 'destructive' }); return; }
+    setFetching(true);
+    setFetchResults(null);
+    try {
+      const data = await posApiFetch(`pos-integrations/${detailView.id}/fetch`, {
+        method: 'POST', body: JSON.stringify({ dataTypes, from: fetchFrom, to: fetchTo }),
+      });
+      setFetchResults(data.results || {});
+      const totalOk = Object.values(data.results || {}).filter((r: any) => r.status === 'success' || r.status === 'partial').length;
+      toast({ title: `Fetch complete`, description: `${totalOk} of ${dataTypes.length} types succeeded` });
+      loadSyncLogs(detailView.id);
+      try { const s = await posApiFetch(`pos-integrations/${detailView.id}/stats`); setStats(s); } catch {}
+    } catch (e: any) {
+      toast({ title: 'Fetch failed', description: e.message, variant: 'destructive' });
+    } finally { setFetching(false); }
   };
 
   const showSecret = async (id: number) => {
@@ -1165,6 +1207,129 @@ function POSIntegrationsTab() {
               <p className="mt-1">Body: <code className="bg-muted px-1 rounded">{'{ "orders": [{ "order_id", "order_date", "items": [...] }] }'}</code></p>
             </div>
           </div>
+        </div>
+
+        <div className="bg-card rounded-xl border p-5 space-y-4" data-testid="pos-fetch-panel">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h4 className="font-semibold flex items-center gap-2"><RefreshCw size={16} /> Pull from POS</h4>
+              <p className="text-xs text-muted-foreground mt-1">Manually fetch data from {PROVIDERS.find(p => p.value === detailView.provider)?.label || detailView.provider} on demand. Already-imported records are skipped automatically.</p>
+            </div>
+          </div>
+
+          {!capabilities ? (
+            <div className="text-xs text-muted-foreground">Loading capabilities...</div>
+          ) : (
+            <>
+              <div>
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground/70">Data to fetch</Label>
+                <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2 mt-2">
+                  {capabilities.dataTypes.map((dt: any) => {
+                    const supported = dt.status === 'supported';
+                    const tip = dt.status === 'not_supported' ? `Not exposed by ${capabilities.provider}` : dt.status === 'webhook_only' ? `${capabilities.provider} pushes this via webhook only` : '';
+                    return (
+                      <label key={dt.key} title={tip}
+                        className={`flex items-start gap-2 text-sm p-2 rounded-lg border ${supported ? 'cursor-pointer hover:bg-muted/40' : 'opacity-50 cursor-not-allowed bg-muted/30'}`}
+                        data-testid={`pos-fetch-type-${dt.key}`}>
+                        <input type="checkbox" disabled={!supported}
+                          checked={!!selectedTypes[dt.key] && supported}
+                          onChange={e => setSelectedTypes(s => ({ ...s, [dt.key]: e.target.checked }))}
+                          className="mt-0.5 rounded" data-testid={`pos-fetch-checkbox-${dt.key}`} />
+                        <div className="flex-1">
+                          <div className="font-medium leading-tight">{dt.label}</div>
+                          {!supported && (
+                            <div className="text-[11px] text-muted-foreground mt-0.5">
+                              {dt.status === 'webhook_only' ? 'Webhook only' : 'Not supported'}
+                            </div>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 items-end">
+                <div>
+                  <Label className="text-xs">From</Label>
+                  <Input type="date" value={fetchFrom} max={fetchTo || todayIso()} onChange={e => setFetchFrom(e.target.value)} data-testid="pos-fetch-from" />
+                </div>
+                <div>
+                  <Label className="text-xs">To</Label>
+                  <Input type="date" value={fetchTo} min={fetchFrom} max={todayIso()} onChange={e => setFetchTo(e.target.value)} data-testid="pos-fetch-to" />
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={handleFetchFromPos} disabled={fetching} className="gap-1" data-testid="pos-fetch-button">
+                    <RefreshCw size={14} className={fetching ? 'animate-spin' : ''} />
+                    {fetching ? 'Fetching...' : 'Fetch Now'}
+                  </Button>
+                </div>
+              </div>
+
+              {fetchResults && (
+                <div className="border rounded-lg divide-y" data-testid="pos-fetch-results">
+                  {Object.entries(fetchResults).map(([k, r]: any) => {
+                    const color = r.status === 'success' ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                      : r.status === 'partial' ? 'text-amber-700 bg-amber-50 border-amber-200'
+                      : r.status === 'skipped' ? 'text-slate-600 bg-slate-50 border-slate-200'
+                      : 'text-red-700 bg-red-50 border-red-200';
+                    const label = capabilities.dataTypes.find((d: any) => d.key === k)?.label || k;
+                    return (
+                      <div key={k} className="p-3 text-sm flex items-start gap-3" data-testid={`pos-fetch-result-${k}`}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border capitalize ${color}`}>{r.status}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium">{label}</div>
+                          <div className="text-xs text-muted-foreground break-words">{r.message}</div>
+                        </div>
+                        {(r.count > 0 || r.errorCount > 0) && (
+                          <div className="text-xs text-right shrink-0">
+                            {r.count > 0 && <div className="text-emerald-600 font-medium font-numbers">+{r.count}</div>}
+                            {r.errorCount > 0 && <div className="text-red-600 font-numbers">{r.errorCount} err</div>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="bg-card rounded-xl border" data-testid="pos-sync-logs">
+          <div className="p-4 border-b flex items-center justify-between">
+            <h4 className="font-semibold text-sm">Recent Fetches</h4>
+            <button onClick={() => loadSyncLogs(detailView.id)} className="text-xs text-primary hover:underline flex items-center gap-1"><RefreshCw size={11} /> Refresh</button>
+          </div>
+          {syncLogs.length === 0 ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">No fetches yet. Use the panel above to pull data on demand.</div>
+          ) : (
+            <div className="divide-y max-h-80 overflow-y-auto">
+              {syncLogs.map(l => {
+                const color = l.status === 'success' ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                  : l.status === 'partial' ? 'text-amber-700 bg-amber-50 border-amber-200'
+                  : l.status === 'skipped' ? 'text-slate-600 bg-slate-50 border-slate-200'
+                  : 'text-red-700 bg-red-50 border-red-200';
+                return (
+                  <div key={l.id} className="px-4 py-3 text-sm flex items-start gap-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border capitalize ${color}`}>{l.status}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium capitalize">{(l.dataType || '').replace('_', ' ')}</span>
+                        {(l.fromDate || l.toDate) && <span className="text-[11px] text-muted-foreground">{l.fromDate} → {l.toDate}</span>}
+                        <span className="text-[11px] text-muted-foreground">· {new Date(l.createdAt).toLocaleString()}</span>
+                      </div>
+                      {l.message && <div className="text-xs text-muted-foreground mt-0.5 break-words">{l.message}</div>}
+                    </div>
+                    <div className="text-xs text-right shrink-0 font-numbers">
+                      {l.recordCount > 0 && <div className="text-emerald-600">+{l.recordCount}</div>}
+                      {l.errorCount > 0 && <div className="text-red-600">{l.errorCount} err</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {stats && detailView.provider === 'petpooja' && (
