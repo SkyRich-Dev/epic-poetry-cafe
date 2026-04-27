@@ -269,21 +269,22 @@ export default function VendorDetailPage() {
                       <button
                         type="button"
                         onClick={() => openBillDetail(b)}
-                        className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                         title="View bill details"
                         data-testid={`button-view-bill-${b.id}`}
                       >
-                        <Eye size={15} />
+                        <Eye size={13} /> View
                       </button>
                       <button
                         type="button"
                         onClick={() => downloadBillPdf(b.id, b.purchaseNumber)}
                         disabled={downloadingBillId === b.id}
-                        className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                         title="Download bill as PDF"
                         data-testid={`button-download-bill-${b.id}`}
                       >
-                        <Download size={15} className={downloadingBillId === b.id ? 'animate-pulse' : ''} />
+                        <Download size={13} className={downloadingBillId === b.id ? 'animate-pulse' : ''} />
+                        {downloadingBillId === b.id ? '...' : 'PDF'}
                       </button>
                     </div>
                   </td>

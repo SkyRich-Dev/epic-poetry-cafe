@@ -11,7 +11,7 @@ import PDFDocument from "pdfkit";
 const router: IRouter = Router();
 
 function fmtMoney(n: number): string {
-  return `${(Math.round((n || 0) * 100) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `₹${(Math.round((n || 0) * 100) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function fmtDateLabel(s?: string | null): string {
