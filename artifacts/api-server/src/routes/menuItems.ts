@@ -52,6 +52,7 @@ router.get("/menu-items", async (_req, res): Promise<void> => {
       dineInPrice: menuItemsTable.dineInPrice,
       takeawayPrice: menuItemsTable.takeawayPrice,
       deliveryPrice: menuItemsTable.deliveryPrice,
+      onlinePrice: menuItemsTable.onlinePrice,
       active: menuItemsTable.active,
       verified: menuItemsTable.verified,
       verifiedBy: menuItemsTable.verifiedBy,
@@ -107,6 +108,7 @@ router.get("/menu-items/:id", async (req, res): Promise<void> => {
       dineInPrice: menuItemsTable.dineInPrice,
       takeawayPrice: menuItemsTable.takeawayPrice,
       deliveryPrice: menuItemsTable.deliveryPrice,
+      onlinePrice: menuItemsTable.onlinePrice,
       active: menuItemsTable.active,
       createdAt: menuItemsTable.createdAt,
     })

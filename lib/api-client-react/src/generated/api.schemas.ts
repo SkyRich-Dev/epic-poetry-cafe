@@ -251,6 +251,8 @@ export interface MenuItem {
   takeawayPrice?: number | null;
   /** @nullable */
   deliveryPrice?: number | null;
+  /** @nullable */
+  onlinePrice?: number | null;
   productionCost: number;
   margin: number;
   marginPercent: number;
@@ -289,6 +291,7 @@ export interface CreateMenuItemRequest {
   dineInPrice?: number;
   takeawayPrice?: number;
   deliveryPrice?: number;
+  onlinePrice?: number;
   active?: boolean;
 }
 

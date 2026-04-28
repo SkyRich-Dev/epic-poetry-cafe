@@ -23,28 +23,65 @@ export default function MenuItems() {
   const [activeItem, setActiveItem] = useState<any>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
 
-  const [formData, setFormData] = useState({ name: '', categoryId: 0, sellingPrice: 0, active: true });
+  const [formData, setFormData] = useState<{
+    name: string;
+    categoryId: number;
+    sellingPrice: number;
+    dineInPrice: number | '';
+    takeawayPrice: number | '';
+    deliveryPrice: number | '';
+    onlinePrice: number | '';
+    active: boolean;
+  }>({ name: '', categoryId: 0, sellingPrice: 0, dineInPrice: '', takeawayPrice: '', deliveryPrice: '', onlinePrice: '', active: true });
 
   const openCreate = () => {
     setEditId(null);
-    setFormData({ name: '', categoryId: categories?.[0]?.id || 0, sellingPrice: 0, active: true });
+    setFormData({ name: '', categoryId: categories?.[0]?.id || 0, sellingPrice: 0, dineInPrice: '', takeawayPrice: '', deliveryPrice: '', onlinePrice: '', active: true });
     setIsModalOpen(true);
   };
 
   const openEdit = (item: any) => {
     setEditId(item.id);
-    setFormData({ name: item.name, categoryId: item.categoryId || 0, sellingPrice: Number(item.sellingPrice) || 0, active: item.active ?? true });
+    setFormData({
+      name: item.name,
+      categoryId: item.categoryId || 0,
+      sellingPrice: Number(item.sellingPrice) || 0,
+      dineInPrice: item.dineInPrice == null ? '' : Number(item.dineInPrice),
+      takeawayPrice: item.takeawayPrice == null ? '' : Number(item.takeawayPrice),
+      deliveryPrice: item.deliveryPrice == null ? '' : Number(item.deliveryPrice),
+      onlinePrice: item.onlinePrice == null ? '' : Number(item.onlinePrice),
+      active: item.active ?? true,
+    });
     setIsModalOpen(true);
   };
 
   const handleSaveItem = async () => {
     if (!formData.name?.trim()) { toast({ title: 'Item name is required', variant: 'destructive' }); return; }
-    if ((formData as any).sellingPrice <= 0) { toast({ title: 'Selling price must be greater than 0', variant: 'destructive' }); return; }
+    if (formData.sellingPrice <= 0) { toast({ title: 'Selling price must be greater than 0', variant: 'destructive' }); return; }
+    const channels: Array<['dineInPrice' | 'takeawayPrice' | 'deliveryPrice' | 'onlinePrice', string]> = [
+      ['dineInPrice', 'Dine-in'], ['takeawayPrice', 'Takeaway'], ['deliveryPrice', 'Delivery'], ['onlinePrice', 'Online'],
+    ];
+    for (const [k, label] of channels) {
+      const v = formData[k];
+      if (v !== '' && (Number.isNaN(Number(v)) || Number(v) < 0)) {
+        toast({ title: `${label} price must be a non-negative number`, variant: 'destructive' }); return;
+      }
+    }
+    const payload: any = {
+      name: formData.name,
+      categoryId: formData.categoryId,
+      sellingPrice: formData.sellingPrice,
+      active: formData.active,
+    };
+    for (const [k] of channels) {
+      const v = formData[k];
+      if (v !== '') payload[k] = Number(v);
+    }
     try {
       if (editId) {
-        await updateMut.mutateAsync({ id: editId, data: formData as any });
+        await updateMut.mutateAsync({ id: editId, data: payload });
       } else {
-        await createMut.mutateAsync({ data: formData as any });
+        await createMut.mutateAsync({ data: payload });
       }
       queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
       setIsModalOpen(false);
@@ -136,17 +173,37 @@ export default function MenuItems() {
             <Label>Item Name</Label>
             <Input value={formData.name} onChange={(e:any) => setFormData({...formData, name: e.target.value})} placeholder="e.g. Mocha Latte" />
           </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-            <div>
-              <Label>Category</Label>
-              <Select value={formData.categoryId} onChange={(e:any) => setFormData({...formData, categoryId: Number(e.target.value)})}>
-                <option value={0}>Select Category</option>
-                {categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
-            </div>
-            <div>
-              <Label>Selling Price</Label>
-              <Input type="number" step="0.01" value={formData.sellingPrice || ''} onChange={(e:any) => setFormData({...formData, sellingPrice: Number(e.target.value)})} />
+          <div>
+            <Label>Category</Label>
+            <Select value={formData.categoryId} onChange={(e:any) => setFormData({...formData, categoryId: Number(e.target.value)})}>
+              <option value={0}>Select Category</option>
+              {categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </div>
+          <div className="border-t border-border pt-4">
+            <h3 className="text-sm font-semibold text-foreground mb-1">Pricing</h3>
+            <p className="text-xs text-muted-foreground mb-3">Selling price is the default. Channel-specific prices override it for that order type. Leave blank to use the selling price.</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+              <div>
+                <Label>Selling Price <span className="text-rose-600">*</span></Label>
+                <Input type="number" step="0.01" min="0" value={formData.sellingPrice || ''} onChange={(e:any) => setFormData({...formData, sellingPrice: Number(e.target.value)})} placeholder="Base price" />
+              </div>
+              <div>
+                <Label>Dine-in Price</Label>
+                <Input type="number" step="0.01" min="0" value={formData.dineInPrice} onChange={(e:any) => setFormData({...formData, dineInPrice: e.target.value === '' ? '' : Number(e.target.value)})} placeholder="Optional" />
+              </div>
+              <div>
+                <Label>Takeaway Price</Label>
+                <Input type="number" step="0.01" min="0" value={formData.takeawayPrice} onChange={(e:any) => setFormData({...formData, takeawayPrice: e.target.value === '' ? '' : Number(e.target.value)})} placeholder="Optional" />
+              </div>
+              <div>
+                <Label>Delivery Price</Label>
+                <Input type="number" step="0.01" min="0" value={formData.deliveryPrice} onChange={(e:any) => setFormData({...formData, deliveryPrice: e.target.value === '' ? '' : Number(e.target.value)})} placeholder="Optional" />
+              </div>
+              <div>
+                <Label>Online Price</Label>
+                <Input type="number" step="0.01" min="0" value={formData.onlinePrice} onChange={(e:any) => setFormData({...formData, onlinePrice: e.target.value === '' ? '' : Number(e.target.value)})} placeholder="Optional" />
+              </div>
             </div>
           </div>
           {editId && (

@@ -2198,6 +2198,8 @@ components:
           type: ["number", "null"]
         deliveryPrice:
           type: ["number", "null"]
+        onlinePrice:
+          type: ["number", "null"]
         productionCost:
           type: number
         margin:
@@ -2248,6 +2250,8 @@ components:
         takeawayPrice:
           type: number
         deliveryPrice:
+          type: number
+        onlinePrice:
           type: number
         active:
           type: boolean

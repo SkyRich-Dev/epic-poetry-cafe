@@ -570,6 +570,7 @@ export const ListMenuItemsResponseItem = zod.object({
   dineInPrice: zod.number().nullish(),
   takeawayPrice: zod.number().nullish(),
   deliveryPrice: zod.number().nullish(),
+  onlinePrice: zod.number().nullish(),
   productionCost: zod.number(),
   margin: zod.number(),
   marginPercent: zod.number(),
@@ -589,6 +590,7 @@ export const CreateMenuItemBody = zod.object({
   dineInPrice: zod.number().optional(),
   takeawayPrice: zod.number().optional(),
   deliveryPrice: zod.number().optional(),
+  onlinePrice: zod.number().optional(),
   active: zod.boolean().optional(),
 });
 
@@ -611,6 +613,7 @@ export const GetMenuItemResponse = zod.object({
     dineInPrice: zod.number().nullish(),
     takeawayPrice: zod.number().nullish(),
     deliveryPrice: zod.number().nullish(),
+    onlinePrice: zod.number().nullish(),
     productionCost: zod.number(),
     margin: zod.number(),
     marginPercent: zod.number(),
@@ -651,6 +654,7 @@ export const UpdateMenuItemBody = zod.object({
   dineInPrice: zod.number().optional(),
   takeawayPrice: zod.number().optional(),
   deliveryPrice: zod.number().optional(),
+  onlinePrice: zod.number().optional(),
   active: zod.boolean().optional(),
 });
 
@@ -665,6 +669,7 @@ export const UpdateMenuItemResponse = zod.object({
   dineInPrice: zod.number().nullish(),
   takeawayPrice: zod.number().nullish(),
   deliveryPrice: zod.number().nullish(),
+  onlinePrice: zod.number().nullish(),
   productionCost: zod.number(),
   margin: zod.number(),
   marginPercent: zod.number(),
@@ -1423,6 +1428,7 @@ export const ConvertTrialToMenuItemResponse = zod.object({
   dineInPrice: zod.number().nullish(),
   takeawayPrice: zod.number().nullish(),
   deliveryPrice: zod.number().nullish(),
+  onlinePrice: zod.number().nullish(),
   productionCost: zod.number(),
   margin: zod.number(),
   marginPercent: zod.number(),

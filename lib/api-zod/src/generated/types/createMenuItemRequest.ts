@@ -14,5 +14,6 @@ export interface CreateMenuItemRequest {
   dineInPrice?: number;
   takeawayPrice?: number;
   deliveryPrice?: number;
+  onlinePrice?: number;
   active?: boolean;
 }

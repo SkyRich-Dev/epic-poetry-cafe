@@ -14,6 +14,7 @@ export const menuItemsTable = pgTable("menu_items", {
   dineInPrice: doublePrecision("dine_in_price"),
   takeawayPrice: doublePrecision("takeaway_price"),
   deliveryPrice: doublePrecision("delivery_price"),
+  onlinePrice: doublePrecision("online_price"),
   active: boolean("active").notNull().default(true),
   verified: boolean("verified").notNull().default(false),
   verifiedBy: integer("verified_by"),
