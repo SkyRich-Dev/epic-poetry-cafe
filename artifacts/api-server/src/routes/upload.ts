@@ -812,6 +812,165 @@ router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): 
   res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results, autoCreated: autoCreated.length > 0 ? autoCreated : undefined });
 });
 
+router.post("/upload/ingredients", authMiddleware, handleUpload, async (req, res): Promise<void> => {
+  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
+
+  const { rows, error } = safeParseFile(req.file.buffer);
+  if (error) { res.status(400).json({ error }); return; }
+  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
+
+  const userRole = (req as any).userRole;
+  const isAdmin = userRole === "admin";
+
+  const categories = await db.select().from(categoriesTable);
+  const catByName = new Map(categories.map(c => [c.name.toLowerCase().trim(), c]));
+
+  const existingIngredients = await db.select().from(ingredientsTable);
+  const ingByName = new Map(existingIngredients.map(i => [i.name.toLowerCase().trim(), i]));
+  const ingByCode = new Map(existingIngredients.map(i => [i.code.toLowerCase().trim(), i]));
+
+  const seenInThisFile = new Set<string>();
+  const results: { row: number; status: string; error?: string; data?: any }[] = [];
+  const autoCreated: string[] = [];
+  let successCount = 0;
+
+  const parseStrictNum = (val: any, blankDefault: number): number | null => {
+    if (val == null || val === "") return blankDefault;
+    const n = Number(val);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = normalizeRow(rows[i]);
+    try {
+      const name = String(raw.name || raw.ingredient || raw.ingredient_name || "").trim();
+      const codeInput = String(raw.code || raw.ingredient_code || "").trim();
+      const categoryName = String(raw.category || raw.category_name || "").trim();
+      const description = String(raw.description || raw.desc || "").trim();
+      const stockUom = String(raw.stock_uom || raw.stockuom || "").trim();
+      const purchaseUom = String(raw.purchase_uom || raw.purchaseuom || "").trim();
+      const recipeUom = String(raw.recipe_uom || raw.recipeuom || "").trim();
+
+      const conversionFactor = parseStrictNum(raw.conversion_factor, 1);
+      const currentCost = parseStrictNum(raw.current_cost ?? raw.cost, 0);
+      const reorderLevel = parseStrictNum(raw.reorder_level ?? raw.reorder, 0);
+      const currentStock = parseStrictNum(raw.current_stock ?? raw.stock ?? raw.opening_stock, 0);
+      const hasShelfLife = raw.shelf_life_days != null && raw.shelf_life_days !== "";
+      const shelfLifeDaysParsed = hasShelfLife ? parseStrictNum(raw.shelf_life_days, 0) : null;
+
+      const perishableRaw = String(raw.perishable || "").toLowerCase().trim();
+      const perishable = perishableRaw === "true" || perishableRaw === "yes" || perishableRaw === "1";
+      const activeRaw = String(raw.active ?? "true").toLowerCase().trim();
+      const active = activeRaw !== "false" && activeRaw !== "no" && activeRaw !== "0";
+
+      if (!name) { results.push({ row: i + 2, status: "error", error: "Name is required" }); continue; }
+      if (!stockUom) { results.push({ row: i + 2, status: "error", error: "Stock_UOM is required" }); continue; }
+      if (!purchaseUom) { results.push({ row: i + 2, status: "error", error: "Purchase_UOM is required" }); continue; }
+      if (!recipeUom) { results.push({ row: i + 2, status: "error", error: "Recipe_UOM is required" }); continue; }
+      if (conversionFactor === null) { results.push({ row: i + 2, status: "error", error: "Conversion_Factor must be a number" }); continue; }
+      if (currentCost === null) { results.push({ row: i + 2, status: "error", error: "Current_Cost must be a number" }); continue; }
+      if (reorderLevel === null) { results.push({ row: i + 2, status: "error", error: "Reorder_Level must be a number" }); continue; }
+      if (currentStock === null) { results.push({ row: i + 2, status: "error", error: "Current_Stock must be a number" }); continue; }
+      if (shelfLifeDaysParsed === null) { results.push({ row: i + 2, status: "error", error: "Shelf_Life_Days must be a number or blank" }); continue; }
+      if (conversionFactor <= 0) { results.push({ row: i + 2, status: "error", error: "Conversion_Factor must be > 0" }); continue; }
+      if (currentCost < 0 || reorderLevel < 0 || currentStock < 0) { results.push({ row: i + 2, status: "error", error: "Cost, reorder level, and stock cannot be negative" }); continue; }
+
+      const dedupeKey = name.toLowerCase();
+      if (seenInThisFile.has(dedupeKey)) { results.push({ row: i + 2, status: "error", error: `Duplicate name in file: "${name}"` }); continue; }
+      seenInThisFile.add(dedupeKey);
+
+      let categoryId: number | null = null;
+      if (categoryName) {
+        const cat = catByName.get(categoryName.toLowerCase());
+        if (cat) {
+          categoryId = cat.id;
+        } else {
+          const [newCat] = await db.insert(categoriesTable).values({
+            name: categoryName,
+            type: "ingredient",
+            active: true,
+            sortOrder: 0,
+          }).returning();
+          categoryId = newCat.id;
+          catByName.set(categoryName.toLowerCase(), newCat);
+          autoCreated.push(`Category: ${categoryName}`);
+        }
+      }
+
+      const matchByName = ingByName.get(dedupeKey);
+      const matchByCode = codeInput ? ingByCode.get(codeInput.toLowerCase()) : undefined;
+      if (matchByName && matchByCode && matchByName.id !== matchByCode.id) {
+        results.push({ row: i + 2, status: "error", error: `Name "${name}" and Code "${codeInput}" point to different existing ingredients (${matchByName.code} vs ${matchByCode.code}). Refusing to update.` });
+        continue;
+      }
+      const existing = matchByName || matchByCode;
+
+      if (existing && existing.verified && !isAdmin) {
+        results.push({ row: i + 2, status: "error", error: `"${existing.name}" is verified — only admin can modify` });
+        continue;
+      }
+
+      if (existing) {
+        const [updated] = await db.update(ingredientsTable).set({
+          name,
+          categoryId: categoryId ?? existing.categoryId,
+          description: description || existing.description,
+          stockUom,
+          purchaseUom,
+          recipeUom,
+          conversionFactor,
+          currentCost,
+          latestCost: currentCost > 0 ? currentCost : existing.latestCost,
+          reorderLevel,
+          currentStock,
+          perishable,
+          shelfLifeDays: shelfLifeDaysParsed ?? existing.shelfLifeDays,
+          active,
+        }).where(eq(ingredientsTable.id, existing.id)).returning();
+        await createAuditLog("ingredients", existing.id, "update", existing, updated);
+        successCount++;
+        results.push({ row: i + 2, status: "success", data: { id: existing.id, code: existing.code, name, action: "updated" } });
+      } else {
+        const code = codeInput || await generateCode("ING", "ingredients");
+        const [created] = await db.insert(ingredientsTable).values({
+          code,
+          name,
+          categoryId,
+          description: description || undefined,
+          stockUom,
+          purchaseUom,
+          recipeUom,
+          conversionFactor,
+          currentCost,
+          latestCost: currentCost,
+          weightedAvgCost: currentCost,
+          reorderLevel,
+          currentStock,
+          perishable,
+          shelfLifeDays: shelfLifeDaysParsed ?? undefined,
+          active,
+        }).returning();
+        ingByName.set(dedupeKey, created);
+        ingByCode.set(code.toLowerCase(), created);
+        await createAuditLog("ingredients", created.id, "create", null, created);
+        successCount++;
+        results.push({ row: i + 2, status: "success", data: { id: created.id, code: created.code, name, action: "created" } });
+      }
+    } catch (e: any) {
+      logger.error({ err: e, row: i + 2 }, "Ingredient upload row error");
+      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
+    }
+  }
+
+  res.json({
+    totalRows: rows.length,
+    successCount,
+    errorCount: rows.length - successCount,
+    results,
+    autoCreated: autoCreated.length > 0 ? autoCreated : undefined,
+  });
+});
+
 router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<void> => {
   const { type } = req.params;
   let headers: string[];
@@ -819,6 +978,11 @@ router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<v
   let sheetName: string;
 
   switch (type) {
+    case "ingredients":
+      sheetName = "Ingredients";
+      headers = ["Name", "Code", "Category", "Description", "Stock_UOM", "Purchase_UOM", "Recipe_UOM", "Conversion_Factor", "Current_Cost", "Reorder_Level", "Current_Stock", "Perishable", "Shelf_Life_Days", "Active"];
+      sampleRow = ["Whole Milk", "", "Dairy", "Fresh full-cream milk", "L", "L", "ml", 1000, 55, 5, 20, "true", 5, "true"];
+      break;
     case "purchases":
       sheetName = "Purchases";
       headers = ["Date", "Vendor", "Ingredient", "Quantity", "UOM", "Rate", "Tax_Percent", "Invoice", "Payment_Mode"];
@@ -855,7 +1019,7 @@ router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<v
       sampleRow = ["2026-03-30", "PP-1234", "10:30", "dine-in", "Walk-in", "Cappuccino", "Beverages", 180, 2, 5, 0, "cash"];
       break;
     default:
-      res.status(400).json({ error: "Invalid template type. Use: purchases, expenses, menu, sales-invoices, or petpooja" });
+      res.status(400).json({ error: "Invalid template type. Use: ingredients, purchases, expenses, menu, sales-invoices, or petpooja" });
       return;
   }
 

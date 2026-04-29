@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { PageHeader, Button, formatCurrency } from '../components/ui-extras';
 import { Upload, Download, FileSpreadsheet, CheckCircle2, XCircle, AlertCircle, Loader2 } from 'lucide-react';
 
-type UploadType = 'sales-invoices' | 'purchases' | 'expenses' | 'menu' | 'petpooja';
+type UploadType = 'sales-invoices' | 'purchases' | 'expenses' | 'menu' | 'ingredients' | 'petpooja';
 
 interface UploadResult {
   totalRows: number;
@@ -32,6 +32,11 @@ const UPLOAD_CONFIGS: Record<UploadType, { label: string; description: string; c
     label: 'Menu & Recipes',
     description: 'Upload menu items with recipe lines. Rows with the same item name are grouped — first row sets item details, all rows add recipe lines.',
     columns: ['Menu_Item', 'Category', 'Description', 'Selling_Price', 'Dine_In_Price', 'Takeaway_Price', 'Delivery_Price', 'Ingredient', 'Quantity', 'UOM', 'Wastage_Percent', 'Stage', 'Notes'],
+  },
+  ingredients: {
+    label: 'Ingredients Master',
+    description: 'Upload ingredients (raw materials). Existing ingredients are matched by Name and updated; new ones get an auto-generated code. Categories are auto-created if missing.',
+    columns: ['Name', 'Code (optional)', 'Category', 'Description', 'Stock_UOM', 'Purchase_UOM', 'Recipe_UOM', 'Conversion_Factor', 'Current_Cost', 'Reorder_Level', 'Current_Stock', 'Perishable', 'Shelf_Life_Days', 'Active'],
   },
   petpooja: {
     label: 'Petpooja Import',
