@@ -1,6 +1,7 @@
 import { pgTable, text, serial, integer, doublePrecision, timestamp } from "drizzle-orm/pg-core";
 import { vendorsTable } from "./vendors";
 import { purchasesTable } from "./purchases";
+import { expensesTable } from "./expenses";
 
 export const vendorPaymentsTable = pgTable("vendor_payments", {
   id: serial("id").primaryKey(),

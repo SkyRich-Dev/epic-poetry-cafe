@@ -20,6 +20,14 @@ export const expensesTable = pgTable("expenses", {
   recurring: boolean("recurring").notNull().default(false),
   recurringFrequency: text("recurring_frequency"),
   linkedPettyCashId: integer("linked_petty_cash_id"),
+  // When postedToVendor=true the expense behaves like a vendor bill: it adds
+  // to the vendor's outstanding balance via vendor_ledger and is settled by
+  // future vendor_payments instead of being deducted from petty cash.
+  postedToVendor: boolean("posted_to_vendor").notNull().default(false),
+  vendorPaymentStatus: text("vendor_payment_status").notNull().default("unpaid"),
+  paidAmount: doublePrecision("paid_amount").notNull().default(0),
+  pendingAmount: doublePrecision("pending_amount").notNull().default(0),
+  dueDate: text("due_date"),
   createdBy: integer("created_by"),
   verified: boolean("verified").notNull().default(false),
   verifiedBy: integer("verified_by"),
