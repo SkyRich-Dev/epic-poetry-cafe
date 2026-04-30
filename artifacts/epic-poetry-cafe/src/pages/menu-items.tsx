@@ -511,10 +511,6 @@ function RecipeBuilderModal({ item, onClose, isViewer }: { item: any, onClose: (
                   <div className="w-20">
                     <Input value={line.uom} readOnly className="bg-muted text-muted-foreground cursor-not-allowed" />
                   </div>
-                  <div className="w-24 relative">
-                    <Input type="number" value={line.wastagePercent} onChange={(e:any) => updateLine(idx, 'wastagePercent', Number(e.target.value))} placeholder="Waste %" readOnly={isViewer} />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-                  </div>
                   {!isViewer && (
                     <button onClick={() => removeLine(idx)} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
                       <Trash2 size={18} />
