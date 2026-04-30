@@ -866,7 +866,7 @@ function RolesTab() {
         onClose={() => setEditing(null)}
         title={editing ? `Edit Role — ${prettyRoleName(editing.name)}` : ''}
         maxWidth="max-w-3xl"
-        footer={
+        footer={(close) => 
           <>
             <Button variant="ghost" onClick={close}>Cancel</Button>
             <Button onClick={saveEdit} disabled={saving}>{saving ? 'Saving…' : 'Save Changes'}</Button>
@@ -899,7 +899,7 @@ function RolesTab() {
         onClose={() => setCreateOpen(false)}
         title="Create Custom Role"
         maxWidth="max-w-3xl"
-        footer={
+        footer={(close) => 
           <>
             <Button variant="ghost" onClick={close}>Cancel</Button>
             <Button onClick={saveCreate} disabled={saving || !createForm.name.trim()}>{saving ? 'Saving…' : 'Create Role'}</Button>
@@ -1864,7 +1864,7 @@ function ExpenseCostTypesTab() {
         dirty={formDirty}
         title={editId ? 'Edit Cost Type' : 'Add Cost Type'}
         maxWidth="max-w-md"
-        footer={
+        footer={(close) => 
           <>
             <Button variant="ghost" onClick={close}>Cancel</Button>
             <Button onClick={handleSave} data-testid="btn-save-cost-type">{editId ? 'Update' : 'Create'}</Button>
@@ -1930,7 +1930,7 @@ function ExpenseCostTypesTab() {
         isOpen={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
         title="Delete Cost Type"
-        footer={
+        footer={(close) => 
           <>
             <Button variant="ghost" onClick={close}>Cancel</Button>
             <Button variant="danger" onClick={handleDelete} data-testid="btn-confirm-delete-cost-type">Delete</Button>
