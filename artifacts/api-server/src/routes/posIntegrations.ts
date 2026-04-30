@@ -306,9 +306,10 @@ async function handlePetpoojaWebhook(req: any, res: any): Promise<void> {
       res.json({ success: true, skipped: true, message: `Order ${result.invoiceNo} was already imported`, invoiceNo: result.invoiceNo });
       return;
     }
-    if (ppCustomer) {
-      try { await upsertPetpoojaCustomer({ name: ppCustomer.name, phone: ppCustomer.phone, email: ppCustomer.email }); } catch {}
-    }
+    // Customer linkage is now handled atomically inside importPetpoojaOrder
+    // (the invoice row is committed with customer_id + normalized customer_phone),
+    // and recomputeCustomerStats runs there too. No second upsert needed here —
+    // doing one would risk overwriting a curated name or skipping phone normalization.
     const [invoice] = await db.select({ id: salesInvoicesTable.id })
       .from(salesInvoicesTable)
       .where(and(eq(salesInvoicesTable.invoiceNo, result.invoiceNo), eq(salesInvoicesTable.sourceType, "petpooja")))

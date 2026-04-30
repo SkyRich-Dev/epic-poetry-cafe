@@ -3,6 +3,7 @@ import { db, posIntegrationsTable, menuItemsTable, categoriesTable,
 import { eq, and, sql } from "drizzle-orm";
 import { isFutureDate } from "./dateValidation";
 import { generateCode } from "./codeGenerator";
+import { normalizePhone, recomputeCustomerStats } from "./customers";
 import type { PosIntegration } from "./posProviders";
 
 const PETPOOJA_SOURCE = "petpooja";
@@ -19,6 +20,7 @@ export interface ImportResult {
   invoiceNo: string;
   autoCreated: string[];
   reason?: string;
+  customerId?: number | null;
 }
 
 export async function importPetpoojaOrder(input: ImportInput): Promise<ImportResult> {
@@ -250,6 +252,47 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
 
       const invoiceFinal = ppTotal > 0 ? ppTotal : Math.round(totalFinal * 100) / 100;
 
+      // Customer linkage — upsert by phone INSIDE the import tx so that
+      // (1) the invoice is linked atomically (no need for a later "Recompute")
+      // and (2) on a rollback we don't leak orphan customers from a failed import.
+      // ON CONFLICT DO NOTHING handles the customers.phone unique race when two
+      // concurrent orders for the same phone import simultaneously.
+      let linkedCustomerId: number | null = null;
+      let linkedCustomerPhone: string | null = null;
+      const ppCustPhone = normalizePhone(ppCustomer?.phone);
+      const ppCustNameRaw = String(ppCustomer?.name || "").trim();
+      const ppCustEmailRaw = String(ppCustomer?.email || "").trim();
+      if (ppCustPhone) {
+        linkedCustomerPhone = ppCustPhone;
+        const insertedRows = await tx.insert(customersTable).values({
+          name: ppCustNameRaw || `Guest ${ppCustPhone.slice(-4)}`,
+          phone: ppCustPhone,
+          email: ppCustEmailRaw || null,
+        }).onConflictDoNothing({ target: customersTable.phone }).returning();
+        if (insertedRows.length > 0) {
+          linkedCustomerId = insertedRows[0].id;
+        } else {
+          const [existingCust] = await tx.select().from(customersTable)
+            .where(eq(customersTable.phone, ppCustPhone)).limit(1);
+          if (existingCust) {
+            linkedCustomerId = existingCust.id;
+            // Enrich existing record only when current values look like placeholders
+            // (avoids overwriting a name the operator manually fixed in the master list).
+            const updates: any = {};
+            const isPlaceholderName = !existingCust.name || /^Guest /i.test(existingCust.name);
+            if (ppCustNameRaw && isPlaceholderName && existingCust.name !== ppCustNameRaw) {
+              updates.name = ppCustNameRaw;
+            }
+            if (ppCustEmailRaw && !existingCust.email) {
+              updates.email = ppCustEmailRaw;
+            }
+            if (Object.keys(updates).length > 0) {
+              await tx.update(customersTable).set(updates).where(eq(customersTable.id, existingCust.id));
+            }
+          }
+        }
+      }
+
       const [invoice] = await tx.insert(salesInvoicesTable).values({
         salesDate,
         invoiceNo,
@@ -257,6 +300,8 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
         sourceType: PETPOOJA_SOURCE,
         orderType,
         customerName: customerName || null,
+        customerPhone: linkedCustomerPhone,
+        customerId: linkedCustomerId,
         grossAmount: Math.round(grossAmount * 100) / 100,
         totalDiscount: Math.round(totalDiscount * 100) / 100,
         taxableAmount: Math.round(totalTaxable * 100) / 100,
@@ -275,7 +320,7 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
         });
       }
 
-      return { created: true, invoiceNo, autoCreated } as ImportResult;
+      return { created: true, invoiceNo, autoCreated, customerId: linkedCustomerId } as ImportResult;
       });
       break; // success — exit retry loop
     } catch (e: any) {
@@ -320,6 +365,16 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
       lastSyncMessage: "1 synced",
       totalOrdersSynced: sql`${posIntegrationsTable.totalOrdersSynced} + 1`,
     }).where(eq(posIntegrationsTable.id, integration.id));
+
+    // Refresh customer aggregate stats outside the import tx so the
+    // Customers page reflects this new order without needing "Recompute".
+    if (txResult.customerId) {
+      try {
+        await recomputeCustomerStats(txResult.customerId);
+      } catch (e) {
+        // Stats refresh failures should never roll back a successfully imported order.
+      }
+    }
   }
 
   return txResult;
@@ -332,21 +387,35 @@ export interface UpsertCustomerInput {
 }
 
 export async function upsertPetpoojaCustomer(c: UpsertCustomerInput): Promise<"created" | "updated" | "skipped"> {
-  const phone = (c.phone || "").trim();
+  // Always normalize the phone — Petpooja's payload sometimes ships +91-prefixed
+  // or formatted numbers, and storing those as-is creates a duplicate customer
+  // that's never linked to invoices (which use the normalized 10-digit form).
+  const phone = normalizePhone(c.phone);
+  if (!phone) return "skipped";
   const name = (c.name || "").trim();
-  if (!phone || !name) return "skipped";
-  const existing = await db.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.phone, phone)).limit(1);
-  if (existing.length > 0) {
-    await db.update(customersTable).set({
-      name,
-      email: c.email || undefined,
-    }).where(eq(customersTable.id, existing[0].id));
+  const email = (c.email || "").trim();
+
+  const [existing] = await db.select().from(customersTable).where(eq(customersTable.phone, phone)).limit(1);
+  if (existing) {
+    // Only enrich placeholder data; never overwrite a curated name with the POS
+    // payload (the operator may have manually corrected it in the master list).
+    const updates: any = {};
+    const isPlaceholderName = !existing.name || /^Guest /i.test(existing.name);
+    if (name && isPlaceholderName && existing.name !== name) updates.name = name;
+    if (email && !existing.email) updates.email = email;
+    if (Object.keys(updates).length === 0) return "skipped";
+    await db.update(customersTable).set(updates).where(eq(customersTable.id, existing.id));
     return "updated";
   }
-  await db.insert(customersTable).values({
-    name,
+
+  // No existing customer — create using the available data, falling back to a
+  // Guest placeholder when the POS payload omitted a name.
+  const insertedRows = await db.insert(customersTable).values({
+    name: name || `Guest ${phone.slice(-4)}`,
     phone,
-    email: c.email || null,
-  });
-  return "created";
+    email: email || null,
+  }).onConflictDoNothing({ target: customersTable.phone }).returning();
+  if (insertedRows.length > 0) return "created";
+  // Lost a race — another concurrent upsert just inserted this phone. Treat as skipped.
+  return "skipped";
 }
