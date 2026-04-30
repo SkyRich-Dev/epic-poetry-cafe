@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, gte, lte, sql, desc, asc } from "drizzle-orm";
 import {
   db, vendorPaymentsTable, vendorPaymentAllocationsTable, vendorLedgerTable,
-  purchasesTable, vendorsTable
+  purchasesTable, vendorsTable, expensesTable
 } from "@workspace/db";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
@@ -75,38 +75,108 @@ router.get("/vendor-payments/:id", authMiddleware, async (req, res): Promise<voi
     .where(eq(vendorPaymentsTable.id, id));
   if (!payment) { res.status(404).json({ error: "Not found" }); return; }
 
-  const allocations = await db.select({
+  const purchaseAllocs = await db.select({
     id: vendorPaymentAllocationsTable.id,
+    kind: sql<string>`'purchase'`,
     purchaseId: vendorPaymentAllocationsTable.purchaseId,
-    purchaseNumber: purchasesTable.purchaseNumber,
+    expenseId: vendorPaymentAllocationsTable.expenseId,
+    billNumber: purchasesTable.purchaseNumber,
     invoiceNumber: purchasesTable.invoiceNumber,
     billAmount: purchasesTable.totalAmount,
     allocatedAmount: vendorPaymentAllocationsTable.allocatedAmount,
   }).from(vendorPaymentAllocationsTable)
     .leftJoin(purchasesTable, eq(vendorPaymentAllocationsTable.purchaseId, purchasesTable.id))
-    .where(eq(vendorPaymentAllocationsTable.vendorPaymentId, id));
+    .where(and(
+      eq(vendorPaymentAllocationsTable.vendorPaymentId, id),
+      sql`${vendorPaymentAllocationsTable.purchaseId} IS NOT NULL`,
+    ));
+
+  const expenseAllocs = await db.select({
+    id: vendorPaymentAllocationsTable.id,
+    kind: sql<string>`'expense'`,
+    purchaseId: vendorPaymentAllocationsTable.purchaseId,
+    expenseId: vendorPaymentAllocationsTable.expenseId,
+    billNumber: expensesTable.expenseNumber,
+    invoiceNumber: sql<string | null>`NULL`,
+    billAmount: expensesTable.totalAmount,
+    allocatedAmount: vendorPaymentAllocationsTable.allocatedAmount,
+  }).from(vendorPaymentAllocationsTable)
+    .leftJoin(expensesTable, eq(vendorPaymentAllocationsTable.expenseId, expensesTable.id))
+    .where(and(
+      eq(vendorPaymentAllocationsTable.vendorPaymentId, id),
+      sql`${vendorPaymentAllocationsTable.expenseId} IS NOT NULL`,
+    ));
+
+  const allocations = [...purchaseAllocs, ...expenseAllocs];
 
   res.json({ ...payment, allocations });
 });
 
+// Helper: rounds to 2 dp, used everywhere we touch money to dodge fp drift.
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const isPosFinite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
+
+// Take a row-level lock on the vendor row inside a transaction so that any
+// concurrent transaction trying to write to vendor_ledger / vendor_payments /
+// posted-expense rows for the same vendor is forced to serialize. Without this
+// two payments for the same vendor could read the same prior ledger balance
+// and write inconsistent runningBalance values.
+async function lockVendor(tx: any, vendorId: number): Promise<void> {
+  await tx
+    .select({ id: vendorsTable.id })
+    .from(vendorsTable)
+    .where(eq(vendorsTable.id, vendorId))
+    .for("update");
+}
+
 router.post("/vendor-payments", authMiddleware, async (req, res): Promise<void> => {
   const { vendorId, paymentDate, paymentMethod, transactionReference, totalAmount, remarks, allocations } = req.body;
-  if (!vendorId || !paymentDate || !paymentMethod || !totalAmount) {
-    res.status(400).json({ error: "vendorId, paymentDate, paymentMethod, totalAmount required" }); return;
+  if (!vendorId || !paymentDate || !paymentMethod) {
+    res.status(400).json({ error: "vendorId, paymentDate, paymentMethod required" }); return;
+  }
+  if (!isPosFinite(totalAmount)) {
+    res.status(400).json({ error: "totalAmount must be a positive finite number" }); return;
   }
   const dateErr = validateNotFutureDate(paymentDate, "Payment date");
   if (dateErr) { res.status(400).json({ error: dateErr }); return; }
 
-  if (allocations && Array.isArray(allocations)) {
-    let allocTotal = 0;
+  // Pre-validate + aggregate allocations OUTSIDE the tx to fail fast with a clean
+  // 400 on bad input. Duplicates targeting the same bill in one request are summed
+  // up first so over-allocation can't sneak through; then we compare the aggregate
+  // (not each row) against the row's pending balance inside the locked transaction.
+  type Bucket = { kind: "purchase" | "expense"; id: number; amount: number };
+  const buckets = new Map<string, Bucket>();
+  let allocTotal = 0;
+
+  // Allocations are mandatory. A vendor payment with no allocations would credit
+  // the vendor ledger without reducing any bill / expense pending — which is
+  // double-accounting (the original purchase or expense already created the
+  // liability). If we ever want to support vendor advances, model them as a
+  // separate "advance" table, not as un-allocated payments.
+  if (!Array.isArray(allocations) || allocations.length === 0) {
+    res.status(400).json({ error: "allocations must be a non-empty array" }); return;
+  }
+  {
     for (const alloc of allocations) {
-      const [bill] = await db.select().from(purchasesTable).where(eq(purchasesTable.id, alloc.purchaseId));
-      if (!bill) { res.status(400).json({ error: `Bill ${alloc.purchaseId} not found` }); return; }
-      if (bill.vendorId !== vendorId) { res.status(400).json({ error: `Bill ${alloc.purchaseId} belongs to different vendor` }); return; }
-      if (alloc.amount > bill.pendingAmount + 0.01) {
-        res.status(400).json({ error: `Allocation ${alloc.amount} exceeds pending ${bill.pendingAmount} for bill ${bill.purchaseNumber}` }); return;
+      const hasPurchase = alloc?.purchaseId != null;
+      const hasExpense = alloc?.expenseId != null;
+      if (hasPurchase === hasExpense) {
+        res.status(400).json({ error: "Each allocation needs exactly one of purchaseId or expenseId" }); return;
       }
-      allocTotal += alloc.amount;
+      if (!isPosFinite(alloc.amount)) {
+        res.status(400).json({ error: "Each allocation amount must be a positive finite number" }); return;
+      }
+      const kind: "purchase" | "expense" = hasPurchase ? "purchase" : "expense";
+      const id = Number(hasPurchase ? alloc.purchaseId : alloc.expenseId);
+      if (!Number.isInteger(id) || id <= 0) {
+        res.status(400).json({ error: "Allocation target id must be a positive integer" }); return;
+      }
+      const key = `${kind}-${id}`;
+      const existing = buckets.get(key);
+      const amount = round2(alloc.amount);
+      if (existing) existing.amount = round2(existing.amount + amount);
+      else buckets.set(key, { kind, id, amount });
+      allocTotal = round2(allocTotal + amount);
     }
     if (Math.abs(allocTotal - totalAmount) > 0.01) {
       res.status(400).json({ error: `Allocation total (${allocTotal}) does not match payment amount (${totalAmount})` }); return;
@@ -114,49 +184,115 @@ router.post("/vendor-payments", authMiddleware, async (req, res): Promise<void> 
   }
 
   const paymentNo = await generateCode("VPAY", "vendor_payments");
-  const [payment] = await db.insert(vendorPaymentsTable).values({
-    paymentNo, vendorId, paymentDate, paymentMethod, transactionReference,
-    totalAmount, remarks, createdBy: (req as any).userId,
-  }).returning();
 
-  if (allocations && Array.isArray(allocations)) {
-    for (const alloc of allocations) {
-      await db.insert(vendorPaymentAllocationsTable).values({
-        vendorPaymentId: payment.id,
-        purchaseId: alloc.purchaseId,
-        allocatedAmount: alloc.amount,
+  // Single transaction: lock target bills/expenses FOR UPDATE so two concurrent
+  // payments cannot both validate against the same pending amount and overpay.
+  // Any failure (validation or insert) rolls back everything atomically.
+  let payment: typeof vendorPaymentsTable.$inferSelect;
+  try {
+    payment = await db.transaction(async (tx) => {
+      // Serialize all writes against this vendor (ledger + bills + expenses)
+      // so that the prior-balance read for runningBalance cannot race with
+      // another payment / posted expense for the same vendor.
+      await lockVendor(tx, vendorId);
+
+      // Validate & lock each unique target inside the tx using SELECT ... FOR UPDATE
+      // so two concurrent payments cannot both validate against the same pending
+      // amount and overpay.
+      for (const b of buckets.values()) {
+        if (b.kind === "purchase") {
+          const [bill] = await tx.select().from(purchasesTable)
+            .where(eq(purchasesTable.id, b.id))
+            .for("update");
+          if (!bill) throw Object.assign(new Error(`Bill ${b.id} not found`), { httpStatus: 400 });
+          if (bill.vendorId !== vendorId) {
+            throw Object.assign(new Error(`Bill ${b.id} belongs to different vendor`), { httpStatus: 400 });
+          }
+          if (b.amount > bill.pendingAmount + 0.01) {
+            throw Object.assign(
+              new Error(`Allocation ${b.amount} exceeds pending ${bill.pendingAmount} for bill ${bill.purchaseNumber}`),
+              { httpStatus: 400 },
+            );
+          }
+        } else {
+          const [exp] = await tx.select().from(expensesTable)
+            .where(eq(expensesTable.id, b.id))
+            .for("update");
+          if (!exp) throw Object.assign(new Error(`Expense ${b.id} not found`), { httpStatus: 400 });
+          if (!exp.postedToVendor || exp.vendorId !== vendorId) {
+            throw Object.assign(new Error(`Expense ${b.id} is not posted to this vendor portal`), { httpStatus: 400 });
+          }
+          if (b.amount > exp.pendingAmount + 0.01) {
+            throw Object.assign(
+              new Error(`Allocation ${b.amount} exceeds pending ${exp.pendingAmount} for expense ${exp.expenseNumber}`),
+              { httpStatus: 400 },
+            );
+          }
+        }
+      }
+
+      const [created] = await tx.insert(vendorPaymentsTable).values({
+        paymentNo, vendorId, paymentDate, paymentMethod, transactionReference,
+        totalAmount: round2(totalAmount), remarks, createdBy: (req as any).userId,
+      }).returning();
+
+      for (const b of buckets.values()) {
+        await tx.insert(vendorPaymentAllocationsTable).values({
+          vendorPaymentId: created.id,
+          purchaseId: b.kind === "purchase" ? b.id : null,
+          expenseId: b.kind === "expense" ? b.id : null,
+          allocatedAmount: b.amount,
+        });
+
+        if (b.kind === "purchase") {
+          const [bill] = await tx.select().from(purchasesTable).where(eq(purchasesTable.id, b.id));
+          const newPaid = round2(bill.paidAmount + b.amount);
+          const newPending = Math.max(0, round2(bill.totalAmount - newPaid));
+          const newStatus = newPending <= 0.01 ? "fully_paid" : "partially_paid";
+          await tx.update(purchasesTable).set({
+            paidAmount: newPaid,
+            pendingAmount: newPending,
+            paymentStatus: newStatus,
+            lastPaymentDate: paymentDate,
+          }).where(eq(purchasesTable.id, b.id));
+        } else {
+          const [exp] = await tx.select().from(expensesTable).where(eq(expensesTable.id, b.id));
+          const newPaid = round2(exp.paidAmount + b.amount);
+          const newPending = Math.max(0, round2(exp.totalAmount - newPaid));
+          const newStatus = newPending <= 0.01 ? "fully_paid" : "partially_paid";
+          await tx.update(expensesTable).set({
+            paidAmount: newPaid,
+            pendingAmount: newPending,
+            vendorPaymentStatus: newStatus,
+          }).where(eq(expensesTable.id, b.id));
+        }
+      }
+
+      const lastLedger = await tx.select().from(vendorLedgerTable)
+        .where(eq(vendorLedgerTable.vendorId, vendorId))
+        .orderBy(desc(vendorLedgerTable.id))
+        .limit(1);
+      const prevBalance = lastLedger.length > 0 ? lastLedger[0].runningBalance : 0;
+
+      await tx.insert(vendorLedgerTable).values({
+        vendorId,
+        transactionDate: paymentDate,
+        transactionType: "payment",
+        referenceType: "vendor_payment",
+        referenceId: created.id,
+        debit: 0,
+        credit: round2(totalAmount),
+        runningBalance: round2(prevBalance - totalAmount),
+        description: `Payment ${paymentNo} - ${paymentMethod}`,
       });
 
-      const [bill] = await db.select().from(purchasesTable).where(eq(purchasesTable.id, alloc.purchaseId));
-      const newPaid = bill.paidAmount + alloc.amount;
-      const newPending = bill.totalAmount - newPaid;
-      const newStatus = newPending <= 0.01 ? "fully_paid" : "partially_paid";
-      await db.update(purchasesTable).set({
-        paidAmount: Math.round(newPaid * 100) / 100,
-        pendingAmount: Math.max(0, Math.round(newPending * 100) / 100),
-        paymentStatus: newStatus,
-        lastPaymentDate: paymentDate,
-      }).where(eq(purchasesTable.id, alloc.purchaseId));
-    }
+      return created;
+    });
+  } catch (e: any) {
+    const status = e?.httpStatus ?? 500;
+    res.status(status).json({ error: e?.message || "Failed to record payment" });
+    return;
   }
-
-  const lastLedger = await db.select().from(vendorLedgerTable)
-    .where(eq(vendorLedgerTable.vendorId, vendorId))
-    .orderBy(desc(vendorLedgerTable.id))
-    .limit(1);
-  const prevBalance = lastLedger.length > 0 ? lastLedger[0].runningBalance : 0;
-
-  await db.insert(vendorLedgerTable).values({
-    vendorId,
-    transactionDate: paymentDate,
-    transactionType: "payment",
-    referenceType: "vendor_payment",
-    referenceId: payment.id,
-    debit: 0,
-    credit: totalAmount,
-    runningBalance: prevBalance - totalAmount,
-    description: `Payment ${paymentNo} - ${paymentMethod}`,
-  });
 
   await createAuditLog("vendor_payments", payment.id, "create", null, { paymentNo, totalAmount });
   res.status(201).json(payment);
@@ -175,47 +311,87 @@ router.post("/vendor-payments/:id/upload-proof", authMiddleware, proofUpload.sin
 
 router.delete("/vendor-payments/:id", authMiddleware, adminOnly, async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  const [payment] = await db.select().from(vendorPaymentsTable).where(eq(vendorPaymentsTable.id, id));
-  if (!payment) { res.status(404).json({ error: "Not found" }); return; }
 
-  const allocations = await db.select().from(vendorPaymentAllocationsTable)
-    .where(eq(vendorPaymentAllocationsTable.vendorPaymentId, id));
+  // Pull and lock the payment INSIDE the tx so two concurrent deletes can't
+  // both observe the same payment row, both succeed, and write two reversal
+  // ledger entries. The first delete locks the row and the second waits then
+  // sees no row → 404.
+  let deleted: typeof vendorPaymentsTable.$inferSelect | null = null;
+  try {
+    deleted = await db.transaction(async (tx) => {
+      const [payment] = await tx.select().from(vendorPaymentsTable)
+        .where(eq(vendorPaymentsTable.id, id))
+        .for("update");
+      if (!payment) return null;
 
-  for (const alloc of allocations) {
-    const [bill] = await db.select().from(purchasesTable).where(eq(purchasesTable.id, alloc.purchaseId));
-    if (bill) {
-      const newPaid = Math.max(0, bill.paidAmount - alloc.allocatedAmount);
-      const newPending = bill.totalAmount - newPaid;
-      const newStatus = newPaid <= 0.01 ? "unpaid" : "partially_paid";
-      await db.update(purchasesTable).set({
-        paidAmount: Math.round(newPaid * 100) / 100,
-        pendingAmount: Math.round(newPending * 100) / 100,
-        paymentStatus: newStatus,
-      }).where(eq(purchasesTable.id, alloc.purchaseId));
-    }
+      // Serialize per-vendor writes so the reversal ledger row is computed
+      // from a stable prior balance.
+      await lockVendor(tx, payment.vendorId);
+
+      const allocations = await tx.select().from(vendorPaymentAllocationsTable)
+        .where(eq(vendorPaymentAllocationsTable.vendorPaymentId, id));
+
+      for (const alloc of allocations) {
+        if (alloc.purchaseId != null) {
+          const [bill] = await tx.select().from(purchasesTable)
+            .where(eq(purchasesTable.id, alloc.purchaseId))
+            .for("update");
+          if (bill) {
+            const newPaid = Math.max(0, round2(bill.paidAmount - alloc.allocatedAmount));
+            const newPending = Math.max(0, round2(bill.totalAmount - newPaid));
+            const newStatus = newPaid <= 0.01 ? "unpaid" : "partially_paid";
+            await tx.update(purchasesTable).set({
+              paidAmount: newPaid,
+              pendingAmount: newPending,
+              paymentStatus: newStatus,
+            }).where(eq(purchasesTable.id, alloc.purchaseId));
+          }
+        } else if (alloc.expenseId != null) {
+          const [exp] = await tx.select().from(expensesTable)
+            .where(eq(expensesTable.id, alloc.expenseId))
+            .for("update");
+          if (exp) {
+            const newPaid = Math.max(0, round2(exp.paidAmount - alloc.allocatedAmount));
+            const newPending = Math.max(0, round2(exp.totalAmount - newPaid));
+            const newStatus = newPaid <= 0.01 ? "unpaid" : "partially_paid";
+            await tx.update(expensesTable).set({
+              paidAmount: newPaid,
+              pendingAmount: newPending,
+              vendorPaymentStatus: newStatus,
+            }).where(eq(expensesTable.id, alloc.expenseId));
+          }
+        }
+      }
+
+      await tx.delete(vendorPaymentAllocationsTable).where(eq(vendorPaymentAllocationsTable.vendorPaymentId, id));
+      await tx.delete(vendorPaymentsTable).where(eq(vendorPaymentsTable.id, id));
+
+      const lastLedger = await tx.select().from(vendorLedgerTable)
+        .where(eq(vendorLedgerTable.vendorId, payment.vendorId))
+        .orderBy(desc(vendorLedgerTable.id))
+        .limit(1);
+      const prevBalance = lastLedger.length > 0 ? lastLedger[0].runningBalance : 0;
+      await tx.insert(vendorLedgerTable).values({
+        vendorId: payment.vendorId,
+        transactionDate: new Date().toISOString().split('T')[0],
+        transactionType: "reversal",
+        referenceType: "vendor_payment",
+        referenceId: id,
+        debit: payment.totalAmount,
+        credit: 0,
+        runningBalance: round2(prevBalance + payment.totalAmount),
+        description: `Reversal of payment ${payment.paymentNo}`,
+      });
+
+      return payment;
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to delete payment" });
+    return;
   }
 
-  await db.delete(vendorPaymentAllocationsTable).where(eq(vendorPaymentAllocationsTable.vendorPaymentId, id));
-  await db.delete(vendorPaymentsTable).where(eq(vendorPaymentsTable.id, id));
-
-  const lastLedger = await db.select().from(vendorLedgerTable)
-    .where(eq(vendorLedgerTable.vendorId, payment.vendorId))
-    .orderBy(desc(vendorLedgerTable.id))
-    .limit(1);
-  const prevBalance = lastLedger.length > 0 ? lastLedger[0].runningBalance : 0;
-  await db.insert(vendorLedgerTable).values({
-    vendorId: payment.vendorId,
-    transactionDate: new Date().toISOString().split('T')[0],
-    transactionType: "reversal",
-    referenceType: "vendor_payment",
-    referenceId: id,
-    debit: payment.totalAmount,
-    credit: 0,
-    runningBalance: prevBalance + payment.totalAmount,
-    description: `Reversal of payment ${payment.paymentNo}`,
-  });
-
-  await createAuditLog("vendor_payments", id, "delete", payment, null);
+  if (!deleted) { res.status(404).json({ error: "Not found" }); return; }
+  await createAuditLog("vendor_payments", id, "delete", deleted, null);
   res.json({ success: true });
 });
 
@@ -236,9 +412,34 @@ router.get("/vendor-detail/:vendorId", authMiddleware, async (req, res): Promise
   const [vendor] = await db.select().from(vendorsTable).where(eq(vendorsTable.id, vendorId));
   if (!vendor) { res.status(404).json({ error: "Not found" }); return; }
 
-  const bills = await db.select().from(purchasesTable)
+  const purchaseBills = await db.select().from(purchasesTable)
     .where(eq(purchasesTable.vendorId, vendorId))
     .orderBy(desc(purchasesTable.createdAt));
+
+  const expenseBillsRaw = await db.select().from(expensesTable)
+    .where(and(eq(expensesTable.vendorId, vendorId), eq(expensesTable.postedToVendor, true)))
+    .orderBy(desc(expensesTable.createdAt));
+
+  // Normalize expense rows so the UI can render them in the same bills table.
+  const expenseBills = expenseBillsRaw.map(e => ({
+    id: e.id,
+    kind: "expense" as const,
+    purchaseNumber: e.expenseNumber,
+    purchaseDate: e.expenseDate,
+    invoiceNumber: null as string | null,
+    vendorInvoiceNumber: null as string | null,
+    dueDate: e.dueDate,
+    totalAmount: e.totalAmount,
+    paidAmount: e.paidAmount,
+    pendingAmount: e.pendingAmount,
+    paymentStatus: e.vendorPaymentStatus,
+    notes: e.description,
+    createdAt: e.createdAt,
+  }));
+  const purchaseBillsMarked = purchaseBills.map(b => ({ ...b, kind: "purchase" as const }));
+  const bills = [...purchaseBillsMarked, ...expenseBills].sort(
+    (a, b) => new Date(b.createdAt as any).getTime() - new Date(a.createdAt as any).getTime()
+  );
 
   const payments = await db.select({
     id: vendorPaymentsTable.id,
@@ -299,6 +500,10 @@ router.get("/vendor-detail/:vendorId", authMiddleware, async (req, res): Promise
 router.get("/vendor-summaries", authMiddleware, async (req, res): Promise<void> => {
   const vendors = await db.select({ id: vendorsTable.id }).from(vendorsTable);
   const bills = await db.select().from(purchasesTable);
+  // Posted-to-vendor expenses are real liabilities and must roll up into the
+  // vendor list page's totals/overdue cards alongside purchase bills.
+  const expenseBills = await db.select().from(expensesTable)
+    .where(eq(expensesTable.postedToVendor, true));
   const payments = await db.select({
     vendorId: vendorPaymentsTable.vendorId,
     paymentDate: vendorPaymentsTable.paymentDate,
@@ -324,6 +529,22 @@ router.get("/vendor-summaries", authMiddleware, async (req, res): Promise<void> 
     }
     const pd = b.purchaseDate;
     if (!s.lastPurchaseDate || pd > s.lastPurchaseDate) s.lastPurchaseDate = pd;
+  }
+
+  for (const e of expenseBills) {
+    if (e.vendorId == null) continue;
+    const s = summaries[e.vendorId];
+    if (!s) continue;
+    s.totalPurchase += e.totalAmount;
+    s.totalPaid += e.paidAmount;
+    s.totalPending += e.pendingAmount;
+    s.totalBills += 1;
+    if (e.dueDate && e.dueDate < today && e.pendingAmount > 0) {
+      s.overdueBillsCount += 1;
+      s.overdueAmount += e.pendingAmount;
+    }
+    const ed = e.expenseDate;
+    if (!s.lastPurchaseDate || ed > s.lastPurchaseDate) s.lastPurchaseDate = ed;
   }
 
   for (const p of payments) {

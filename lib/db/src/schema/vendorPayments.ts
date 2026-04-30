@@ -1,4 +1,5 @@
-import { pgTable, text, serial, integer, doublePrecision, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, doublePrecision, timestamp, check, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { vendorsTable } from "./vendors";
 import { purchasesTable } from "./purchases";
 import { expensesTable } from "./expenses";
@@ -22,11 +23,31 @@ export const vendorPaymentsTable = pgTable("vendor_payments", {
 export const vendorPaymentAllocationsTable = pgTable("vendor_payment_allocations", {
   id: serial("id").primaryKey(),
   vendorPaymentId: integer("vendor_payment_id").notNull().references(() => vendorPaymentsTable.id),
-  purchaseId: integer("purchase_id").notNull().references(() => purchasesTable.id),
+  // Exactly one of purchaseId / expenseId is set per row.
+  // The DB CHECK below enforces this XOR invariant for any insert path.
+  purchaseId: integer("purchase_id").references(() => purchasesTable.id),
+  expenseId: integer("expense_id").references(() => expensesTable.id),
   allocatedAmount: doublePrecision("allocated_amount").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (table) => ({
+  exactlyOneRef: check(
+    "vendor_payment_allocations_exactly_one_ref",
+    sql`(${table.purchaseId} IS NOT NULL)::int + (${table.expenseId} IS NOT NULL)::int = 1`,
+  ),
+  positiveAmount: check(
+    "vendor_payment_allocations_positive_amount",
+    sql`${table.allocatedAmount} > 0`,
+  ),
+  // Belt-and-suspenders: even if the API aggregator misses dedup, the DB will
+  // refuse two allocation rows for the same target on the same payment.
+  uqPurchase: uniqueIndex("vp_alloc_unique_purchase")
+    .on(table.vendorPaymentId, table.purchaseId)
+    .where(sql`${table.purchaseId} IS NOT NULL`),
+  uqExpense: uniqueIndex("vp_alloc_unique_expense")
+    .on(table.vendorPaymentId, table.expenseId)
+    .where(sql`${table.expenseId} IS NOT NULL`),
+}));
 
 export const vendorLedgerTable = pgTable("vendor_ledger", {
   id: serial("id").primaryKey(),

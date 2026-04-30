@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { db, expensesTable, categoriesTable, vendorsTable, pettyCashLedgerTable } from "@workspace/db";
+import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
+import { db, expensesTable, categoriesTable, vendorsTable, pettyCashLedgerTable, vendorLedgerTable, vendorPaymentAllocationsTable } from "@workspace/db";
 import { ListExpensesResponse, CreateExpenseBody, GetExpenseParams, GetExpenseResponse, UpdateExpenseParams, UpdateExpenseBody } from "@workspace/api-zod";
 import { authMiddleware, adminOnly } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
@@ -46,6 +46,11 @@ router.get("/expenses", async (req, res): Promise<void> => {
       costType: expensesTable.costType,
       recurring: expensesTable.recurring,
       recurringFrequency: expensesTable.recurringFrequency,
+      postedToVendor: expensesTable.postedToVendor,
+      vendorPaymentStatus: expensesTable.vendorPaymentStatus,
+      paidAmount: expensesTable.paidAmount,
+      pendingAmount: expensesTable.pendingAmount,
+      dueDate: expensesTable.dueDate,
       verified: expensesTable.verified,
       verifiedBy: expensesTable.verifiedBy,
       verifiedAt: expensesTable.verifiedAt,
@@ -66,9 +71,16 @@ router.post("/expenses", authMiddleware, async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const dateErr = validateNotFutureDate(parsed.data.expenseDate, "Expense date");
   if (dateErr) { res.status(400).json({ error: dateErr }); return; }
+
+  // Read non-zod fields from raw body — these aren't in the generated schema.
+  const postToVendorPortal = req.body?.postToVendorPortal === true && parsed.data.vendorId != null;
+  const dueDate = typeof req.body?.dueDate === "string" ? req.body.dueDate : null;
+
   const expenseNumber = await generateCode("EXP", "expenses");
   const totalAmount = parsed.data.amount + (parsed.data.taxAmount ?? 0);
-  const isPettyCash = isPettyCashMode(parsed.data.paymentMode);
+  // Posted-to-vendor expenses are credit purchases, not cash outflows now,
+  // so they bypass petty cash entirely regardless of paymentMode.
+  const isPettyCash = !postToVendorPortal && isPettyCashMode(parsed.data.paymentMode);
 
   if (isPettyCash) {
     const balance = await getPettyCashBalance();
@@ -78,40 +90,80 @@ router.post("/expenses", authMiddleware, async (req, res): Promise<void> => {
     }
   }
 
-  const [expense] = await db.insert(expensesTable).values({
-    expenseNumber,
-    expenseDate: parsed.data.expenseDate,
-    categoryId: parsed.data.categoryId,
-    vendorId: parsed.data.vendorId,
-    amount: parsed.data.amount,
-    taxAmount: parsed.data.taxAmount ?? 0,
-    totalAmount,
-    paymentMode: parsed.data.paymentMode,
-    paidBy: parsed.data.paidBy,
-    description: parsed.data.description,
-    costType: parsed.data.costType,
-    recurring: parsed.data.recurring ?? false,
-    recurringFrequency: parsed.data.recurringFrequency,
-  }).returning();
-
-  if (isPettyCash) {
-    const pcBalance = await getPettyCashBalance();
-    const [pcEntry] = await db.insert(pettyCashLedgerTable).values({
-      transactionDate: parsed.data.expenseDate,
-      transactionType: "expense",
-      amount: totalAmount,
-      method: "petty cash",
-      counterpartyName: parsed.data.paidBy || null,
-      category: "Expense",
-      linkedExpenseId: expense.id,
-      description: `Expense ${expenseNumber}: ${parsed.data.description || ""}`.trim(),
-      runningBalance: pcBalance - totalAmount,
-      approvalStatus: "approved",
-      createdBy: (req as any).userId || null,
+  // All side effects (expense insert + petty-cash ledger + vendor ledger debit)
+  // run in one transaction so a partial failure cannot leave the books in an
+  // inconsistent state. The vendor ledger row is computed inside the tx using
+  // a serialized last-row read, which under transaction isolation prevents
+  // concurrent inserts from clobbering the running balance.
+  const expense = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(expensesTable).values({
+      expenseNumber,
+      expenseDate: parsed.data.expenseDate,
+      categoryId: parsed.data.categoryId,
+      vendorId: parsed.data.vendorId,
+      amount: parsed.data.amount,
+      taxAmount: parsed.data.taxAmount ?? 0,
+      totalAmount,
+      paymentMode: postToVendorPortal ? "credit" : parsed.data.paymentMode,
+      paidBy: parsed.data.paidBy,
+      description: parsed.data.description,
+      costType: parsed.data.costType,
+      recurring: parsed.data.recurring ?? false,
+      recurringFrequency: parsed.data.recurringFrequency,
+      postedToVendor: postToVendorPortal,
+      vendorPaymentStatus: "unpaid",
+      paidAmount: 0,
+      pendingAmount: postToVendorPortal ? totalAmount : 0,
+      dueDate,
     }).returning();
 
-    await db.update(expensesTable).set({ linkedPettyCashId: pcEntry.id }).where(eq(expensesTable.id, expense.id));
-  }
+    if (isPettyCash) {
+      const pcBalance = await getPettyCashBalance();
+      const [pcEntry] = await tx.insert(pettyCashLedgerTable).values({
+        transactionDate: parsed.data.expenseDate,
+        transactionType: "expense",
+        amount: totalAmount,
+        method: "petty cash",
+        counterpartyName: parsed.data.paidBy || null,
+        category: "Expense",
+        linkedExpenseId: created.id,
+        description: `Expense ${expenseNumber}: ${parsed.data.description || ""}`.trim(),
+        runningBalance: pcBalance - totalAmount,
+        approvalStatus: "approved",
+        createdBy: (req as any).userId || null,
+      }).returning();
+
+      await tx.update(expensesTable).set({ linkedPettyCashId: pcEntry.id }).where(eq(expensesTable.id, created.id));
+    }
+
+    if (postToVendorPortal && parsed.data.vendorId != null) {
+      // Lock the vendor row first so concurrent vendor-payment / posted-expense
+      // transactions for this vendor serialize. Without this two transactions
+      // could read the same prior runningBalance and write inconsistent values.
+      await tx.select({ id: vendorsTable.id }).from(vendorsTable)
+        .where(eq(vendorsTable.id, parsed.data.vendorId))
+        .for("update");
+
+      const lastLedger = await tx.select().from(vendorLedgerTable)
+        .where(eq(vendorLedgerTable.vendorId, parsed.data.vendorId))
+        .orderBy(desc(vendorLedgerTable.id))
+        .limit(1);
+      const prevBalance = lastLedger.length > 0 ? lastLedger[0].runningBalance : 0;
+      await tx.insert(vendorLedgerTable).values({
+        vendorId: parsed.data.vendorId,
+        transactionDate: parsed.data.expenseDate,
+        transactionType: "purchase",
+        referenceType: "expense",
+        referenceId: created.id,
+        debit: totalAmount,
+        credit: 0,
+        runningBalance: prevBalance + totalAmount,
+        description: `Expense ${expenseNumber}${parsed.data.description ? ` - ${parsed.data.description}` : ""}`,
+      });
+    }
+
+    return created;
+  });
 
   await createAuditLog("expenses", expense.id, "create", null, expense);
   res.status(201).json({ ...expense, categoryName: null, vendorName: null });
@@ -157,7 +209,30 @@ router.patch("/expenses/:id", authMiddleware, async (req, res): Promise<void> =>
   const [old] = await db.select().from(expensesTable).where(eq(expensesTable.id, params.data.id));
   if (!old) { res.status(404).json({ error: "Not found" }); return; }
   if (old.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can modify." }); return; }
+
+  // Posted-to-vendor expenses are tracked liabilities with a ledger row and
+  // potentially partial payments. Mutating the financial fields would silently
+  // desynchronize the vendor ledger and bill totals. Block those edits and
+  // require the caller to delete + re-create if they really need to change them.
+  if (old.postedToVendor) {
+    const financialChanged =
+      (parsed.data.amount !== undefined && parsed.data.amount !== old.amount) ||
+      (parsed.data.taxAmount !== undefined && parsed.data.taxAmount !== old.taxAmount) ||
+      (parsed.data.vendorId !== undefined && parsed.data.vendorId !== old.vendorId) ||
+      (parsed.data.expenseDate !== undefined && parsed.data.expenseDate !== old.expenseDate) ||
+      (parsed.data.paymentMode !== undefined && parsed.data.paymentMode !== old.paymentMode);
+    if (financialChanged) {
+      res.status(409).json({ error: "Cannot change amount, vendor, date or payment mode on an expense posted to vendor portal. Delete and re-create instead." });
+      return;
+    }
+  }
+
+  // Allow the dueDate (raw body field, not in zod schema) to be edited freely
+  // — it's display-only and doesn't affect ledger.
   const updates: any = { ...parsed.data };
+  if (typeof req.body?.dueDate === "string" || req.body?.dueDate === null) {
+    updates.dueDate = req.body.dueDate;
+  }
   const newAmount = parsed.data.amount ?? old.amount;
   const newTax = parsed.data.taxAmount ?? old.taxAmount;
   if (parsed.data.amount !== undefined || parsed.data.taxAmount !== undefined) {
@@ -176,6 +251,51 @@ router.delete("/expenses/:id", authMiddleware, async (req, res): Promise<void> =
   const [existing] = await db.select().from(expensesTable).where(eq(expensesTable.id, params.data.id));
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   if (existing.verified && (req as any).userRole !== "admin") { res.status(403).json({ error: "Record is verified. Only admin can delete." }); return; }
+
+  // Posted-to-vendor expenses need extra care: if any vendor payment has been
+  // allocated to it the deletion would orphan accounting; if it's still
+  // unpaid we have to write a compensating ledger credit so the vendor's
+  // outstanding balance stays consistent.
+  if (existing.postedToVendor) {
+    const allocs = await db.select({ id: vendorPaymentAllocationsTable.id })
+      .from(vendorPaymentAllocationsTable)
+      .where(eq(vendorPaymentAllocationsTable.expenseId, existing.id));
+    if (allocs.length > 0 || existing.paidAmount > 0) {
+      res.status(409).json({ error: "Cannot delete: this expense has vendor payments allocated to it. Delete those payments first." });
+      return;
+    }
+
+    if (existing.vendorId != null) {
+      const vendorId = existing.vendorId;
+      await db.transaction(async (tx) => {
+        // Lock vendor to serialize ledger writes for this vendor.
+        await tx.select({ id: vendorsTable.id }).from(vendorsTable)
+          .where(eq(vendorsTable.id, vendorId)).for("update");
+
+        const lastLedger = await tx.select().from(vendorLedgerTable)
+          .where(eq(vendorLedgerTable.vendorId, vendorId))
+          .orderBy(desc(vendorLedgerTable.id)).limit(1);
+        const prevBalance = lastLedger.length > 0 ? lastLedger[0].runningBalance : 0;
+        await tx.insert(vendorLedgerTable).values({
+          vendorId,
+          transactionDate: new Date().toISOString().split('T')[0],
+          transactionType: "reversal",
+          referenceType: "expense",
+          referenceId: existing.id,
+          debit: 0,
+          credit: existing.totalAmount,
+          runningBalance: prevBalance - existing.totalAmount,
+          description: `Reversal of expense ${existing.expenseNumber} (deleted)`,
+        });
+
+        await tx.delete(expensesTable).where(eq(expensesTable.id, existing.id));
+      });
+
+      await createAuditLog("expenses", existing.id, "delete", existing, null);
+      res.json({ success: true });
+      return;
+    }
+  }
 
   if (existing.linkedPettyCashId) {
     await db.delete(pettyCashLedgerTable).where(eq(pettyCashLedgerTable.id, existing.linkedPettyCashId));

@@ -30,8 +30,9 @@ export default function VendorDetailPage() {
   const [ledger, setLedger] = useState<any[]>([]);
   const [tab, setTab] = useState<'overview' | 'bills' | 'payments' | 'ledger' | 'analytics'>('overview');
   const [paymentModal, setPaymentModal] = useState(false);
-  const [paymentForm, setPaymentForm] = useState({ paymentDate: new Date().toISOString().split('T')[0], paymentMethod: 'cash', transactionReference: '', totalAmount: 0, remarks: '', allocations: [] as { purchaseId: number; amount: number }[] });
-  const [selectedBills, setSelectedBills] = useState<Map<number, number>>(new Map());
+  const [paymentForm, setPaymentForm] = useState({ paymentDate: new Date().toISOString().split('T')[0], paymentMethod: 'cash', transactionReference: '', totalAmount: 0, remarks: '', allocations: [] as { purchaseId?: number; expenseId?: number; amount: number }[] });
+  // Map keys are `${kind}-${id}` so purchase bills and expense bills can coexist.
+  const [selectedBills, setSelectedBills] = useState<Map<string, number>>(new Map());
   const [billDetailOpen, setBillDetailOpen] = useState(false);
   const [billDetail, setBillDetail] = useState<{ purchase: any; lines: any[] } | null>(null);
   const [billLoading, setBillLoading] = useState(false);
@@ -100,18 +101,18 @@ export default function VendorDetailPage() {
     setPaymentModal(true);
   };
 
-  const toggleBillAllocation = (billId: number, pending: number) => {
+  const toggleBillAllocation = (key: string, pending: number) => {
     const newMap = new Map(selectedBills);
-    if (newMap.has(billId)) { newMap.delete(billId); } else { newMap.set(billId, Math.round(pending * 100) / 100); }
+    if (newMap.has(key)) { newMap.delete(key); } else { newMap.set(key, Math.round(pending * 100) / 100); }
     setSelectedBills(newMap);
     let total = 0;
     newMap.forEach(v => total += v);
     setPaymentForm(f => ({ ...f, totalAmount: Math.round(total * 100) / 100 }));
   };
 
-  const updateBillAllocation = (billId: number, amount: number) => {
+  const updateBillAllocation = (key: string, amount: number) => {
     const newMap = new Map(selectedBills);
-    newMap.set(billId, amount);
+    newMap.set(key, amount);
     setSelectedBills(newMap);
     let total = 0;
     newMap.forEach(v => total += v);
@@ -120,7 +121,13 @@ export default function VendorDetailPage() {
 
   const handlePayment = async () => {
     try {
-      const allocations = Array.from(selectedBills.entries()).map(([purchaseId, amount]) => ({ purchaseId, amount }));
+      // Bills are keyed by `${kind}-${id}` so a payment can mix purchase bills
+      // and posted-to-portal expense bills in the same allocation set.
+      const allocations = Array.from(selectedBills.entries()).map(([key, amount]) => {
+        const [kind, idStr] = String(key).split('-');
+        const id = Number(idStr);
+        return kind === 'expense' ? { expenseId: id, amount } : { purchaseId: id, amount };
+      });
       await apiFetch('vendor-payments', {
         method: 'POST',
         body: JSON.stringify({ vendorId, ...paymentForm, allocations }),
@@ -245,9 +252,17 @@ export default function VendorDetailPage() {
             <tbody>{recentBills.map((b: any) => {
               const today = new Date().toISOString().split('T')[0];
               const isOverdue = b.dueDate && b.dueDate < today && b.pendingAmount > 0;
+              const isExpense = b.kind === 'expense';
+              const rowKey = `${b.kind || 'purchase'}-${b.id}`;
               return (
-                <tr key={b.id} className="border-b hover:bg-muted/30">
-                  <td className="px-4 py-3"><div className="font-medium">{b.purchaseNumber}</div>{b.invoiceNumber && <div className="text-xs text-muted-foreground">{b.invoiceNumber}</div>}</td>
+                <tr key={rowKey} className="border-b hover:bg-muted/30" data-testid={`row-bill-${rowKey}`}>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{b.purchaseNumber}</span>
+                      {isExpense && <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700">Expense</span>}
+                    </div>
+                    {b.invoiceNumber && <div className="text-xs text-muted-foreground">{b.invoiceNumber}</div>}
+                  </td>
                   <td className="px-4 py-3">{formatDate(b.purchaseDate)}</td>
                   <td className="px-4 py-3">{b.dueDate ? formatDate(b.dueDate) : '-'}</td>
                   <td className="px-4 py-3 text-right font-numbers">{formatCurrency(b.totalAmount)}</td>
@@ -266,26 +281,33 @@ export default function VendorDetailPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => openBillDetail(b)}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                        title="View bill details"
-                        data-testid={`button-view-bill-${b.id}`}
-                      >
-                        <Eye size={13} /> View
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => downloadBillPdf(b.id, b.purchaseNumber)}
-                        disabled={downloadingBillId === b.id}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                        title="Download bill as PDF"
-                        data-testid={`button-download-bill-${b.id}`}
-                      >
-                        <Download size={13} className={downloadingBillId === b.id ? 'animate-pulse' : ''} />
-                        {downloadingBillId === b.id ? '...' : 'PDF'}
-                      </button>
+                      {!isExpense && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openBillDetail(b)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            title="View bill details"
+                            data-testid={`button-view-bill-${b.id}`}
+                          >
+                            <Eye size={13} /> View
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => downloadBillPdf(b.id, b.purchaseNumber)}
+                            disabled={downloadingBillId === b.id}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                            title="Download bill as PDF"
+                            data-testid={`button-download-bill-${b.id}`}
+                          >
+                            <Download size={13} className={downloadingBillId === b.id ? 'animate-pulse' : ''} />
+                            {downloadingBillId === b.id ? '...' : 'PDF'}
+                          </button>
+                        </>
+                      )}
+                      {isExpense && (
+                        <span className="text-[11px] text-muted-foreground">Posted from Expenses</span>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -399,18 +421,37 @@ export default function VendorDetailPage() {
             <div>
               <Label>Allocate to Bills</Label>
               <div className="border rounded-lg mt-1 max-h-48 overflow-y-auto">
-                {unpaidBills.map((b: any) => (
-                  <div key={b.id} className="flex items-center gap-3 px-3 py-2 border-b last:border-b-0 hover:bg-muted/30">
-                    <input type="checkbox" checked={selectedBills.has(b.id)} onChange={() => toggleBillAllocation(b.id, b.pendingAmount)} className="rounded" />
-                    <div className="flex-1">
-                      <span className="text-sm font-medium">{b.purchaseNumber}</span>
-                      <span className="text-xs text-muted-foreground ml-2">Pending: {formatCurrency(b.pendingAmount)}</span>
+                {unpaidBills.map((b: any) => {
+                  const key = `${b.kind || 'purchase'}-${b.id}`;
+                  const isExpense = b.kind === 'expense';
+                  return (
+                    <div key={key} className="flex items-center gap-3 px-3 py-2 border-b last:border-b-0 hover:bg-muted/30">
+                      <input
+                        type="checkbox"
+                        data-testid={`checkbox-allocate-${key}`}
+                        checked={selectedBills.has(key)}
+                        onChange={() => toggleBillAllocation(key, b.pendingAmount)}
+                        className="rounded"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{b.purchaseNumber}</span>
+                          {isExpense && <span className="px-1 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700">Expense</span>}
+                        </div>
+                        <span className="text-xs text-muted-foreground">Pending: {formatCurrency(b.pendingAmount)}</span>
+                      </div>
+                      {selectedBills.has(key) && (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          className="w-28"
+                          value={selectedBills.get(key)}
+                          onChange={e => updateBillAllocation(key, Math.min(Number(e.target.value), b.pendingAmount))}
+                        />
+                      )}
                     </div>
-                    {selectedBills.has(b.id) && (
-                      <Input type="number" step="0.01" className="w-28" value={selectedBills.get(b.id)} onChange={e => updateBillAllocation(b.id, Math.min(Number(e.target.value), b.pendingAmount))} />
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

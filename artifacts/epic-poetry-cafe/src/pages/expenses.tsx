@@ -13,6 +13,8 @@ type ExpenseFormState = {
   description: string;
   paymentMode: string;
   vendorId: number | null;
+  postToVendorPortal: boolean;
+  dueDate: string;
 };
 
 const blankExpenseForm = (): ExpenseFormState => ({
@@ -22,6 +24,8 @@ const blankExpenseForm = (): ExpenseFormState => ({
   description: '',
   paymentMode: 'CARD',
   vendorId: null,
+  postToVendorPortal: false,
+  dueDate: '',
 });
 
 export default function Expenses() {
@@ -56,6 +60,8 @@ export default function Expenses() {
       description: e.description || '',
       paymentMode: e.paymentMode || 'CARD',
       vendorId: e.vendorId ?? null,
+      postToVendorPortal: !!e.postedToVendor,
+      dueDate: e.dueDate || '',
     });
     setIsModalOpen(true);
   };
@@ -68,13 +74,19 @@ export default function Expenses() {
       const token = localStorage.getItem('token');
       // The API treats vendorId as nullish — explicitly send null when cleared
       // so the backend can clear an existing link, and a number when picked.
+      // Posting to vendor portal only makes sense when a vendor is selected.
+      const postToVendorPortal = !!formData.postToVendorPortal && formData.vendorId != null;
       const payload: any = {
         expenseDate: formData.expenseDate,
         amount: formData.amount,
         costType: formData.costType,
         description: formData.description,
-        paymentMode: formData.paymentMode,
+        // When posting to vendor portal the expense is on credit until paid via
+        // Vendor Payments — petty cash should NOT be deducted now.
+        paymentMode: postToVendorPortal ? 'CREDIT' : formData.paymentMode,
         vendorId: formData.vendorId ?? null,
+        postToVendorPortal,
+        dueDate: postToVendorPortal && formData.dueDate ? formData.dueDate : null,
       };
       if (editId) {
         const res = await fetch(`${base}api/expenses/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
@@ -125,23 +137,35 @@ export default function Expenses() {
               <th className="px-6 py-4">Type</th>
               <th className="px-6 py-4">Mode</th>
               <th className="px-6 py-4 text-right">Amount</th>
+              <th className="px-6 py-4 text-center">Status</th>
               <th className="px-6 py-4 text-center">Verified</th>
               {!isViewer && <th className="px-6 py-4 text-right">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">Loading expenses...</td></tr>
+              <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">Loading expenses...</td></tr>
             ) : expenses?.length === 0 ? (
-              <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">No expenses recorded.</td></tr>
+              <tr><td colSpan={9} className="px-6 py-8 text-center text-muted-foreground">No expenses recorded.</td></tr>
             ) : expenses?.map((e: any) => (
-              <tr key={e.id} className="table-row-hover">
+              <tr key={e.id} className="table-row-hover" data-testid={`row-expense-${e.id}`}>
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(e.expenseDate)}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{e.description || 'Generic Expense'}</td>
                 <td className="px-6 py-4 text-muted-foreground">{e.vendorName || <span className="opacity-50">—</span>}</td>
                 <td className="px-6 py-4"><Badge variant="neutral">{e.costType === 'STAFF_FOOD' ? 'Staff Food' : e.costType === 'CLEANING' ? 'Cleaning' : e.costType}</Badge></td>
                 <td className="px-6 py-4 text-muted-foreground">{e.paymentMode}</td>
                 <td className="px-6 py-4 text-right font-medium text-rose-600">{formatCurrency(e.amount)}</td>
+                <td className="px-6 py-4 text-center" data-testid={`status-expense-${e.id}`}>
+                  {e.postedToVendor ? (
+                    e.vendorPaymentStatus === 'fully_paid'
+                      ? <Badge variant="success">Paid</Badge>
+                      : e.vendorPaymentStatus === 'partially_paid'
+                        ? <Badge variant="warning">Partial</Badge>
+                        : <Badge variant="warning">On vendor portal</Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Settled</span>
+                  )}
+                </td>
                 <td className="px-6 py-4 text-center"><VerifyButton verified={!!e.verified} isAdmin={isAdmin} onVerify={() => handleVerify(e.id)} onUnverify={() => handleUnverify(e.id)} /></td>
                 {!isViewer && (
                   <td className="px-6 py-4 text-right">
@@ -170,16 +194,62 @@ export default function Expenses() {
             <Select
               data-testid="select-expense-vendor"
               value={formData.vendorId == null ? '' : String(formData.vendorId)}
-              onChange={(e: any) => setFormData({ ...formData, vendorId: e.target.value === '' ? null : Number(e.target.value) })}
+              onChange={(e: any) => setFormData({ ...formData, vendorId: e.target.value === '' ? null : Number(e.target.value), postToVendorPortal: e.target.value === '' ? false : formData.postToVendorPortal })}
             >
               <option value="">— No vendor —</option>
               {vendors?.map((v: any) => <option key={v.id} value={v.id}>{v.name}</option>)}
             </Select>
             <p className="text-[11px] text-muted-foreground mt-1">Pick a food / pest control / maintenance vendor to track their bills.</p>
           </div>
+
+          {formData.vendorId != null && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-950/20 p-3">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  data-testid="checkbox-post-to-vendor"
+                  checked={formData.postToVendorPortal}
+                  onChange={(e: any) => setFormData({ ...formData, postToVendorPortal: e.target.checked })}
+                />
+                <div className="text-sm">
+                  <div className="font-medium text-foreground">Post to vendor portal</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    Track this as a vendor bill instead of an immediate payment. It will appear in the vendor's outstanding balance and ledger, and you can pay it later via Vendor Payments.
+                  </div>
+                </div>
+              </label>
+              {formData.postToVendorPortal && (
+                <div className="mt-3">
+                  <Label>Due Date (optional)</Label>
+                  <Input
+                    type="date"
+                    data-testid="input-expense-due-date"
+                    value={formData.dueDate}
+                    onChange={(e: any) => setFormData({ ...formData, dueDate: e.target.value })}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Amount</Label><Input type="number" step="0.01" value={formData.amount} onChange={(e:any) => setFormData({...formData, amount: Number(e.target.value)})} /></div>
-            <div><Label>Payment Mode</Label><Select value={formData.paymentMode} onChange={(e:any) => setFormData({...formData, paymentMode: e.target.value})}><option value="CASH">Cash</option><option value="CARD">Card</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="PETTY_CASH">Petty Cash</option></Select></div>
+            <div>
+              <Label>Payment Mode</Label>
+              {formData.postToVendorPortal ? (
+                <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground" data-testid="payment-mode-credit">
+                  On credit (vendor portal)
+                </div>
+              ) : (
+                <Select value={formData.paymentMode} onChange={(e:any) => setFormData({...formData, paymentMode: e.target.value})}>
+                  <option value="CASH">Cash</option>
+                  <option value="CARD">Card</option>
+                  <option value="BANK_TRANSFER">Bank Transfer</option>
+                  <option value="PETTY_CASH">Petty Cash</option>
+                </Select>
+              )}
+            </div>
           </div>
         </div>
       </Modal>
