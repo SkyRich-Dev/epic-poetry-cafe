@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useListIngredients, useCreateIngredient, useListCategories } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, VerifyButton, apiVerify, apiUnverify, useFormDirty } from '../components/ui-extras';
 import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -34,6 +34,7 @@ export default function Ingredients() {
   const [formData, setFormData] = useState(emptyForm);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
   const [dupConfirm, setDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
+  const ingFormDirty = useFormDirty(isModalOpen, formData);
   const [search, setSearch] = useState('');
   const [filterCategoryId, setFilterCategoryId] = useState<number | 'all'>('all');
   const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'category' | 'cost-asc' | 'cost-desc'>('name-asc');
@@ -233,8 +234,8 @@ export default function Ingredients() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Ingredient" : "Add Ingredient"} maxWidth="max-w-2xl"
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={ingFormDirty} title={editId ? "Edit Ingredient" : "Add Ingredient"} maxWidth="max-w-2xl"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-5 py-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Name</Label><Input value={formData.name} onChange={(e:any) => setFormData({...formData, name: e.target.value})} placeholder="e.g. Arabica Beans" /></div>
@@ -263,7 +264,7 @@ export default function Ingredients() {
       </Modal>
 
       <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Ingredient"
-        footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
         <p className="py-2 text-sm text-muted-foreground">Are you sure you want to delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This cannot be undone.</p>
       </Modal>
 

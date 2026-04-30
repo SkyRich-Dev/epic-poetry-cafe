@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useListWasteEntries, useCreateWasteEntry, useListIngredients } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter, VerifyButton, apiVerify, apiUnverify, useFormDirty } from '../components/ui-extras';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -23,6 +23,7 @@ export default function Waste() {
   const [formData, setFormData] = useState({ wasteDate: new Date().toISOString().split('T')[0], wasteType: 'INGREDIENT', ingredientId: 0, quantity: 1, uom: 'g', reason: '' });
   const { toast } = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
+  const wasteFormDirty = useFormDirty(isModalOpen, formData);
 
   const openCreate = () => { setEditId(null); setFormData({ wasteDate: new Date().toISOString().split('T')[0], wasteType: 'INGREDIENT', ingredientId: 0, quantity: 1, uom: 'g', reason: '' }); setIsModalOpen(true); };
   const openEdit = (w: any) => { setEditId(w.id); setFormData({ wasteDate: w.wasteDate, wasteType: w.wasteType, ingredientId: w.ingredientId || 0, quantity: Number(w.quantity), uom: w.uom, reason: w.reason || '' }); setIsModalOpen(true); };
@@ -109,8 +110,8 @@ export default function Waste() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Waste Entry" : "Log Waste"} maxWidth="max-w-lg"
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} variant="danger" disabled={createMut.isPending}>{editId ? 'Update' : 'Confirm Log'}</Button></>}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={wasteFormDirty} title={editId ? "Edit Waste Entry" : "Log Waste"} maxWidth="max-w-lg"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} variant="danger" disabled={createMut.isPending}>{editId ? 'Update' : 'Confirm Log'}</Button></>}>
         <div className="space-y-5 py-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={formData.wasteDate} onChange={(e:any) => setFormData({...formData, wasteDate: e.target.value})} /></div>
@@ -126,7 +127,7 @@ export default function Waste() {
       </Modal>
 
       <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Waste Entry"
-        footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
         <p className="py-2 text-sm text-muted-foreground">Delete waste entry for <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>?</p>
       </Modal>
     </div>

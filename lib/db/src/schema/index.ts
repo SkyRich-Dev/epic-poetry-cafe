@@ -7,6 +7,7 @@ export * from "./ingredients";
 export * from "./menuItems";
 export * from "./purchases";
 export * from "./expenses";
+export * from "./expenseCostTypes";
 export * from "./inventory";
 export * from "./sales";
 export * from "./waste";

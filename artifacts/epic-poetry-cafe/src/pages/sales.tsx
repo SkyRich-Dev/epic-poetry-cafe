@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useListMenuItems } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, VerifyButton, useFormDirty } from '../components/ui-extras';
 import { Plus, Trash2, Eye, FileText, BarChart3, Package, CheckCircle2, AlertTriangle, X, TrendingUp, IndianRupee, ArrowRight } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -38,12 +38,15 @@ export default function Sales() {
   const [invoiceModal, setInvoiceModal] = useState(false);
   const [detailModal, setDetailModal] = useState<any>(null);
   const [deleteConfirmInv, setDeleteConfirmInv] = useState<any>(null);
+  // Snapshot the entire invoice form (header + line items) so adding /
+  // removing rows or editing quantities both trigger the discard prompt.
   const [invoiceForm, setInvoiceForm] = useState({
     salesDate: new Date().toISOString().split('T')[0], invoiceNo: '', invoiceTime: '',
     orderType: 'dine-in', customerName: '', customerPhone: '', totalDiscount: 0, paymentMode: 'cash',
     paymentReference: '', gstInclusive: true,
     lines: [{ menuItemId: 0, quantity: 1, gstPercent: 5 }] as { menuItemId: number; quantity: number; gstPercent: number }[],
   });
+  const invoiceFormDirty = useFormDirty(invoiceModal, invoiceForm);
 
   const getMenuPrice = (id: number) => menuItems?.find(m => m.id === id)?.sellingPrice || 0;
 
@@ -340,8 +343,8 @@ export default function Sales() {
         </div>
       )}
 
-      <Modal isOpen={invoiceModal} onClose={() => setInvoiceModal(false)} title="New Sales Invoice" maxWidth="max-w-2xl"
-        footer={<><Button variant="ghost" onClick={() => setInvoiceModal(false)}>Cancel</Button><Button onClick={handleInvoiceCreate}>Create Invoice</Button></>}>
+      <Modal isOpen={invoiceModal} onClose={() => setInvoiceModal(false)} dirty={invoiceFormDirty} title="New Sales Invoice" maxWidth="max-w-2xl"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleInvoiceCreate}>Create Invoice</Button></>}>
         <div className="space-y-5 py-2 max-h-[60vh] overflow-y-auto">
           <div className="grid grid-cols-3 gap-x-4 gap-y-5">
             <div><Label>Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={invoiceForm.salesDate} onChange={e => setInvoiceForm(f => ({ ...f, salesDate: e.target.value }))} /></div>
@@ -457,7 +460,7 @@ export default function Sales() {
       )}
 
       <Modal isOpen={!!deleteConfirmInv} onClose={() => setDeleteConfirmInv(null)} title="Delete Invoice"
-        footer={<><Button variant="ghost" onClick={() => setDeleteConfirmInv(null)}>Cancel</Button><Button variant="danger" onClick={handleInvDelete}>Delete</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="danger" onClick={handleInvDelete}>Delete</Button></>}>
         <p className="py-2 text-sm text-muted-foreground">Delete invoice <span className="font-semibold text-foreground">{deleteConfirmInv?.invoiceNo}</span>? This removes all line items.</p>
       </Modal>
     </div>

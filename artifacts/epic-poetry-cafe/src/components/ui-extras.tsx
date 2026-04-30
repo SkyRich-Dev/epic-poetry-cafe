@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, CalendarDays, RotateCcw, ShieldCheck, ShieldX } from 'lucide-react';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -69,15 +69,85 @@ export function StatCard({ title, value, icon: Icon, trend, trendLabel, colorCla
   );
 }
 
-export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-md", footer }: any) {
+// Snapshots formData when a modal opens and reports whether the current
+// formData has diverged. Lets a Modal block its own close until the user
+// confirms discarding edits. Pass the SAME object you pass into your form
+// inputs; nested primitives are fine, Dates / functions are not.
+export function useFormDirty(isOpen: boolean, formData: any): boolean {
+  const initialRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isOpen) {
+      try { initialRef.current = JSON.stringify(formData); }
+      catch { initialRef.current = null; }
+    } else {
+      initialRef.current = null;
+    }
+    // We deliberately only resnapshot on open/close transitions, not on
+    // every formData change — that would forever match and never be dirty.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+  if (!isOpen || initialRef.current === null) return false;
+  let current: string;
+  try { current = JSON.stringify(formData); } catch { return false; }
+  return current !== initialRef.current;
+}
+
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  maxWidth = "max-w-md",
+  footer,
+  dirty = false,
+  confirmDiscardMessage = "You have unsaved changes. Discard them?",
+}: any) {
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+
+  // Reset the inline confirm overlay when the modal itself toggles, so a
+  // reopened modal never starts on the confirm prompt.
+  useEffect(() => {
+    if (!isOpen) setConfirmDiscard(false);
+  }, [isOpen]);
+
+  // Intercept ESC. Native Radix dialogs do this for us, but our Modal is a
+  // bare div, so without this ESC silently does nothing — which is itself a
+  // bug. We handle it here AND apply the dirty-guard at the same time.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Don't fight nested overlays' ESC handling.
+      if (confirmDiscard) { setConfirmDiscard(false); e.stopPropagation(); return; }
+      e.stopPropagation();
+      attemptClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, dirty, confirmDiscard]);
+
+  const attemptClose = () => {
+    if (dirty) setConfirmDiscard(true);
+    else onClose?.();
+  };
+
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-in fade-in duration-200" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-in fade-in duration-200"
+        onClick={attemptClose}
+        data-testid="modal-overlay"
+      />
       <div className={cn("bg-card text-card-foreground w-full rounded-2xl shadow-2xl overflow-hidden relative z-10 flex flex-col max-h-[90vh] animate-in zoom-in-95 fade-in duration-200", maxWidth)}>
         <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all duration-150">
+          <button
+            onClick={attemptClose}
+            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all duration-150"
+            data-testid="modal-close-x"
+          >
             <X size={18}/>
           </button>
         </div>
@@ -86,7 +156,39 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "max-w-md",
         </div>
         {footer && (
           <div className="px-6 py-3.5 border-t border-border/60 flex justify-end gap-2.5 bg-muted/30">
-            {footer}
+            {/* Footer can be a ReactNode or a render-prop receiving the
+              guarded close (`attemptClose`). Pages should wire their
+              "Cancel" button through the render-prop form so the dirty
+              prompt fires from Cancel as well. */}
+            {typeof footer === 'function' ? footer(attemptClose) : footer}
+          </div>
+        )}
+        {confirmDiscard && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-150"
+            data-testid="discard-confirm"
+            onClick={(e) => { if (e.target === e.currentTarget) setConfirmDiscard(false); }}
+          >
+            <div className="bg-card border border-border rounded-2xl shadow-2xl p-6 max-w-sm mx-4 animate-in zoom-in-95 duration-150">
+              <h3 className="text-base font-semibold text-foreground mb-2">Unsaved changes</h3>
+              <p className="text-sm text-muted-foreground mb-5">{confirmDiscardMessage}</p>
+              <div className="flex justify-end gap-2.5">
+                <button
+                  onClick={() => setConfirmDiscard(false)}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-transparent hover:bg-muted text-muted-foreground hover:text-foreground transition-all duration-200"
+                  data-testid="btn-keep-editing"
+                >
+                  Keep editing
+                </button>
+                <button
+                  onClick={() => { setConfirmDiscard(false); onClose?.(); }}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 transition-all duration-200"
+                  data-testid="btn-discard"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

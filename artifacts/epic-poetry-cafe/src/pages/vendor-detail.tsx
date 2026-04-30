@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useLocation } from 'wouter';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, DateFilter, useFormDirty } from '../components/ui-extras';
 import { ArrowLeft, Plus, Upload, ExternalLink, IndianRupee, AlertTriangle, FileText, CreditCard, BookOpen, BarChart3, Eye, Download } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -33,6 +33,8 @@ export default function VendorDetailPage() {
   const [paymentForm, setPaymentForm] = useState({ paymentDate: new Date().toISOString().split('T')[0], paymentMethod: 'cash', transactionReference: '', totalAmount: 0, remarks: '', allocations: [] as { purchaseId?: number; expenseId?: number; amount: number }[] });
   // Map keys are `${kind}-${id}` so purchase bills and expense bills can coexist.
   const [selectedBills, setSelectedBills] = useState<Map<string, number>>(new Map());
+  // Map can't be JSON.stringified directly — convert to entries array.
+  const paymentFormDirty = useFormDirty(paymentModal, { paymentForm, billsKey: Array.from(selectedBills.entries()) });
   const [billDetailOpen, setBillDetailOpen] = useState(false);
   const [billDetail, setBillDetail] = useState<{ purchase: any; lines: any[] } | null>(null);
   const [billLoading, setBillLoading] = useState(false);
@@ -405,8 +407,8 @@ export default function VendorDetailPage() {
         </div>
       )}
 
-      <Modal isOpen={paymentModal} onClose={() => setPaymentModal(false)} title="Record Vendor Payment" maxWidth="max-w-lg"
-        footer={<><Button variant="ghost" onClick={() => setPaymentModal(false)}>Cancel</Button><Button onClick={handlePayment} disabled={paymentForm.totalAmount <= 0}>Save Payment</Button></>}>
+      <Modal isOpen={paymentModal} onClose={() => setPaymentModal(false)} dirty={paymentFormDirty} title="Record Vendor Payment" maxWidth="max-w-lg"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handlePayment} disabled={paymentForm.totalAmount <= 0}>Save Payment</Button></>}>
         <div className="space-y-5 py-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Payment Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={paymentForm.paymentDate} onChange={e => setPaymentForm(f => ({ ...f, paymentDate: e.target.value }))} /></div>

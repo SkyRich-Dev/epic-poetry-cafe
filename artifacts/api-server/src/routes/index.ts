@@ -10,6 +10,7 @@ import ingredientsRouter from "./ingredients";
 import menuItemsRouter from "./menuItems";
 import purchasesRouter from "./purchases";
 import expensesRouter from "./expenses";
+import expenseCostTypesRouter from "./expenseCostTypes";
 import inventoryRouter from "./inventory";
 
 import wasteRouter from "./waste";
@@ -44,6 +45,7 @@ router.use(ingredientsRouter);
 router.use(menuItemsRouter);
 router.use(purchasesRouter);
 router.use(expensesRouter);
+router.use(expenseCostTypesRouter);
 router.use(inventoryRouter);
 
 router.use(wasteRouter);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useListPettyCash, useCreatePettyCash, useGetPettyCashSummary, useDeletePettyCash } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter, useFormDirty } from '../components/ui-extras';
 import { Plus, Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, Trash2, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -32,6 +32,7 @@ export default function PettyCash() {
 
   const [obModal, setObModal] = useState(false);
   const [obAmount, setObAmount] = useState('');
+  const obFormDirty = useFormDirty(obModal, { obAmount });
   const [obSaving, setObSaving] = useState(false);
 
   const handleSetOpeningBalance = async () => {
@@ -58,6 +59,7 @@ export default function PettyCash() {
   };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // Snapshotted by useFormDirty just below the formData declaration.
   const [formData, setFormData] = useState({
     transactionDate: new Date().toISOString().split('T')[0],
     transactionType: 'receipt' as string,
@@ -67,6 +69,7 @@ export default function PettyCash() {
     category: '',
     description: '',
   });
+  const pettyFormDirty = useFormDirty(isModalOpen, formData);
 
   const handleSave = async () => {
     const amt = Number(formData.amount);
@@ -216,8 +219,8 @@ export default function PettyCash() {
         </table>
       </div>
 
-      <Modal isOpen={obModal} onClose={() => setObModal(false)} title="Set Opening Balance"
-        footer={<><Button variant="ghost" onClick={() => setObModal(false)}>Cancel</Button><Button onClick={handleSetOpeningBalance} disabled={obSaving}>{obSaving ? 'Saving...' : 'Save'}</Button></>}>
+      <Modal isOpen={obModal} onClose={() => setObModal(false)} dirty={obFormDirty} title="Set Opening Balance"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSetOpeningBalance} disabled={obSaving}>{obSaving ? 'Saving...' : 'Save'}</Button></>}>
         <div className="space-y-5 py-2">
           <p className="text-sm text-muted-foreground">Enter the cash amount that was already in the petty cash fund before you started tracking here. This will be added to all balance calculations.</p>
           <div>
@@ -227,8 +230,8 @@ export default function PettyCash() {
         </div>
       </Modal>
 
-      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); resetForm(); }} title={editingId ? "Edit Petty Cash Entry" : "New Petty Cash Entry"} maxWidth="max-w-lg"
-        footer={<><Button variant="ghost" onClick={() => { setIsModalOpen(false); setEditingId(null); resetForm(); }}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editingId ? 'Update' : 'Save'}</Button></>}>
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); resetForm(); }} dirty={pettyFormDirty} title={editingId ? "Edit Petty Cash Entry" : "New Petty Cash Entry"} maxWidth="max-w-lg"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editingId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-5 py-2">
           {summary && (
             <div className="bg-muted/50 rounded-xl p-3 text-center">

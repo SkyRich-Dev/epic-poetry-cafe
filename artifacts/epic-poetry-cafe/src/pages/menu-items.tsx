@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useListMenuItems, useCreateMenuItem, useUpdateMenuItem, useGetRecipe, useSaveRecipe, useGetMenuItemCosting, useListIngredients, useListCategories } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, cn, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, cn, VerifyButton, apiVerify, apiUnverify, useFormDirty } from '../components/ui-extras';
 import { Plus, Edit, ChefHat, Tag, DollarSign, Calculator, Trash2, Pencil, Search, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -339,7 +339,7 @@ export default function MenuItems() {
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Menu Item" : "Add Menu Item"} maxWidth="max-w-lg"
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSaveItem} disabled={isSaving || createMut.isPending || updateMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSaveItem} disabled={isSaving || createMut.isPending || updateMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-5 py-2">
           <div>
             <Label>Item Name</Label>
@@ -388,7 +388,7 @@ export default function MenuItems() {
       </Modal>
 
       <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Menu Item"
-        footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
         <p className="py-2 text-sm text-muted-foreground">Are you sure you want to delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This will also remove its recipe.</p>
       </Modal>
 

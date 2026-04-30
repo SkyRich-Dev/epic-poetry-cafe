@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useListVendors } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Modal, Badge, formatCurrency } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, Badge, formatCurrency, useFormDirty } from '../components/ui-extras';
 import { Plus, Phone, Mail, Pencil, Trash2, Eye, AlertTriangle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -30,6 +30,7 @@ export default function Vendors() {
   const { toast } = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
   const [dupConfirm, setDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
+  const vendorFormDirty = useFormDirty(isModalOpen, formData);
   const [isSaving, setIsSaving] = useState(false);
   const [vendorSummaries, setVendorSummaries] = useState<Map<number, any>>(new Map());
   const [filter, setFilter] = useState<'all' | 'withDues' | 'overdue'>('all');
@@ -194,8 +195,8 @@ export default function Vendors() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Vendor" : "Add Vendor"} maxWidth="max-w-lg"
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={isSaving}>{editId ? 'Update' : 'Save'}</Button></>}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={vendorFormDirty} title={editId ? "Edit Vendor" : "Add Vendor"} maxWidth="max-w-lg"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={isSaving}>{editId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-5 py-2">
           <div><Label>Company Name</Label><Input value={formData.name} onChange={(e:any) => setFormData({...formData, name: e.target.value})} /></div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
@@ -215,7 +216,7 @@ export default function Vendors() {
       </Modal>
 
       <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Vendor"
-        footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
         <p className="py-2 text-sm text-muted-foreground">Are you sure you want to delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This cannot be undone.</p>
       </Modal>
 

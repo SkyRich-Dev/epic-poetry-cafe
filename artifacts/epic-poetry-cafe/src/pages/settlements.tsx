@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useListSettlements, useCreateSettlement, useGetSettlementSalesSummary, useVerifySettlement, useDeleteSettlement, useGetSettlement, useUpdateSettlement } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, formatCurrency, formatDate, StatCard, DateFilter, useFormDirty } from '../components/ui-extras';
 import { Plus, CheckCircle, AlertTriangle, XCircle, Banknote, CreditCard, QrCode, Trash2, Eye, ShieldCheck, Pencil } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -35,11 +35,15 @@ export default function Settlements() {
   const [detailModal, setDetailModal] = useState<number | null>(null);
   const [settlementDate, setSettlementDate] = useState(new Date().toISOString().split('T')[0]);
   const [remarks, setRemarks] = useState('');
+  // Snapshot the entire settlement form (date, remarks, lines + per-mode
+  // denomination breakdown) so any change blocks accidental discard.
+  // `lines` itself is declared right below — the hook reads it lazily.
   const [lines, setLines] = useState<{ paymentMode: string; amount: string; referenceNote: string; denominations?: Record<string, number> }[]>([
     { paymentMode: 'Cash', amount: '', referenceNote: '', denominations: {} },
     { paymentMode: 'Card', amount: '', referenceNote: '' },
     { paymentMode: 'QR', amount: '', referenceNote: '' },
   ]);
+  const settlementFormDirty = useFormDirty(isModalOpen, { settlementDate, remarks, lines });
 
   const DENOM_VALUES = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
   const denomTotal = (denoms?: Record<string, number>) =>
@@ -211,8 +215,8 @@ export default function Settlements() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); }} title={editingId ? "Edit Settlement" : "New Daily Settlement"} maxWidth="max-w-2xl"
-        footer={<><Button variant="ghost" onClick={() => { setIsModalOpen(false); setEditingId(null); }}>Cancel</Button><Button onClick={handleSave} disabled={(createMut.isPending || updateMut.isPending) || difference > 0.01}>{editingId ? 'Update' : 'Save'} Settlement</Button></>}>
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingId(null); }} dirty={settlementFormDirty} title={editingId ? "Edit Settlement" : "New Daily Settlement"} maxWidth="max-w-2xl"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={(createMut.isPending || updateMut.isPending) || difference > 0.01}>{editingId ? 'Update' : 'Save'} Settlement</Button></>}>
         <div className="space-y-5 py-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div>

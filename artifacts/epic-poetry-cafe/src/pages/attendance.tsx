@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
-import { PageHeader, Button, Input, Label, Modal } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, useFormDirty } from '../components/ui-extras';
 import { CalendarDays, Clock, Plus, Check, Trash2, UserCheck, AlertCircle } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -41,6 +41,7 @@ export default function AttendancePage() {
 
   const [leaveModal, setLeaveModal] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ employeeId: '', leaveDate: new Date().toISOString().split('T')[0], leaveType: 'paid', reason: '' });
+  const leaveFormDirty = useFormDirty(leaveModal, leaveForm);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -240,7 +241,7 @@ export default function AttendancePage() {
             </table>
           </div>
 
-          <Modal isOpen={leaveModal} onClose={() => setLeaveModal(false)} title="Record Leave" footer={<><Button variant="ghost" onClick={() => setLeaveModal(false)}>Cancel</Button><Button onClick={saveLeave}>Save Leave</Button></>}>
+          <Modal isOpen={leaveModal} onClose={() => setLeaveModal(false)} dirty={leaveFormDirty} title="Record Leave" footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={saveLeave}>Save Leave</Button></>}>
             <div className="space-y-5">
               <div><Label>Employee *</Label>
                 <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring" value={leaveForm.employeeId} onChange={e => setLeaveForm({ ...leaveForm, employeeId: e.target.value })}>

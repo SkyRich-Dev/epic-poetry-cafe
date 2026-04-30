@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useListCategories, useCreateCategory, useListUom, useGetConfig, useUpdateConfig, useListUsers, useCreateUser, useUpdateUser } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, formatDate } from '../components/ui-extras';
-import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download, Trash2, Plug, Wifi, WifiOff, RefreshCw, Copy, AlertTriangle, CheckCircle2, Trash, Bell, Mail, Send, Play, Power } from 'lucide-react';
+import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, formatDate, useFormDirty } from '../components/ui-extras';
+import { Settings, Plus, UserPlus, Pencil, Shield, ShieldCheck, Eye, ScrollText, UserCog, FolderCog, Download, Trash2, Plug, Wifi, WifiOff, RefreshCw, Copy, AlertTriangle, CheckCircle2, Trash, Bell, Mail, Send, Play, Power, Tag } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
 
 const TABS = [
   { id: 'config', label: 'Categories & Config', icon: FolderCog },
+  { id: 'expense-types', label: 'Expense Cost Types', icon: Tag },
   { id: 'users', label: 'User Management', icon: UserCog },
   { id: 'roles', label: 'Roles & Permissions', icon: Shield },
   { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -103,9 +104,11 @@ function CategoriesConfigTab() {
   const [catModal, setCatModal] = useState(false);
   const [catEditId, setCatEditId] = useState<number | null>(null);
   const [catForm, setCatForm] = useState({ name: '', type: 'ingredient', active: true });
+  const catFormDirty = useFormDirty(catModal, catForm);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
   const [configModal, setConfigModal] = useState(false);
   const [configForm, setConfigForm] = useState(DEFAULT_CONFIG);
+  const configFormDirty = useFormDirty(configModal, configForm);
   const [configError, setConfigError] = useState<string | null>(null);
   const [catDupConfirm, setCatDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
 
@@ -298,8 +301,8 @@ function CategoriesConfigTab() {
         </div>
       </div>
 
-      <Modal isOpen={catModal} onClose={() => setCatModal(false)} title={catEditId ? "Edit Category" : "Add Category"}
-        footer={<><Button variant="ghost" onClick={() => setCatModal(false)}>Cancel</Button><Button onClick={handleSaveCat}>{catEditId ? 'Update' : 'Save'}</Button></>}>
+      <Modal isOpen={catModal} onClose={() => setCatModal(false)} dirty={catFormDirty} title={catEditId ? "Edit Category" : "Add Category"}
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSaveCat}>{catEditId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-5 py-2">
           <div><Label>Name</Label><Input value={catForm.name} onChange={(e:any) => setCatForm({...catForm, name: e.target.value})} /></div>
           <div>
@@ -314,7 +317,7 @@ function CategoriesConfigTab() {
       </Modal>
 
       <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Category"
-        footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDeleteCat}>Delete</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="danger" onClick={handleDeleteCat}>Delete</Button></>}>
         <p className="py-2 text-sm text-muted-foreground">
           Are you sure you want to delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This action cannot be undone.
         </p>
@@ -342,9 +345,9 @@ function CategoriesConfigTab() {
         </div>
       </Modal>
 
-      <Modal isOpen={configModal} onClose={() => { setConfigModal(false); setConfigError(null); }} title="Edit System Configuration" maxWidth="max-w-lg"
-        footer={<>
-          <Button variant="ghost" onClick={() => { setConfigModal(false); setConfigError(null); }}>Cancel</Button>
+      <Modal isOpen={configModal} onClose={() => { setConfigModal(false); setConfigError(null); }} dirty={configFormDirty} title="Edit System Configuration" maxWidth="max-w-lg"
+        footer={(close) => <>
+          <Button variant="ghost" onClick={close}>Cancel</Button>
           <Button onClick={handleSaveConfig} disabled={updateConfigMut.isPending}>
             {updateConfigMut.isPending ? 'Saving...' : 'Save Changes'}
           </Button>
@@ -572,7 +575,7 @@ function UsersTab() {
       </div>
 
       <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Add New User" maxWidth="max-w-lg"
-        footer={<><Button variant="ghost" onClick={() => setIsCreateOpen(false)}>Cancel</Button><Button onClick={handleCreate} disabled={createMut.isPending || !createForm.username || !createForm.password || !createForm.fullName}>Create User</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleCreate} disabled={createMut.isPending || !createForm.username || !createForm.password || !createForm.fullName}>Create User</Button></>}>
         <div className="space-y-5 py-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div>
@@ -612,7 +615,7 @@ function UsersTab() {
       </Modal>
 
       <Modal isOpen={!!editUser} onClose={() => setEditUser(null)} title={`Edit User — ${editUser?.username}`} maxWidth="max-w-lg"
-        footer={<><Button variant="ghost" onClick={() => setEditUser(null)}>Cancel</Button><Button onClick={handleUpdate} disabled={updateMut.isPending}>Save Changes</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleUpdate} disabled={updateMut.isPending}>Save Changes</Button></>}>
         <div className="space-y-5 py-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div>
@@ -655,7 +658,7 @@ function UsersTab() {
       </Modal>
 
       <Modal isOpen={!!deleteUser} onClose={() => setDeleteUserState(null)} title="Delete User" maxWidth="max-w-md"
-        footer={<><Button variant="ghost" onClick={() => setDeleteUserState(null)}>Cancel</Button><Button onClick={handleDelete} className="bg-rose-600 hover:bg-rose-700">Delete User</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleDelete} className="bg-rose-600 hover:bg-rose-700">Delete User</Button></>}>
         <div className="py-2 space-y-3">
           <div className="flex items-start gap-3 p-3 rounded-xl bg-rose-50 border border-rose-200">
             <AlertTriangle className="text-rose-600 mt-0.5 flex-shrink-0" size={20} />
@@ -865,7 +868,7 @@ function RolesTab() {
         maxWidth="max-w-3xl"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+            <Button variant="ghost" onClick={close}>Cancel</Button>
             <Button onClick={saveEdit} disabled={saving}>{saving ? 'Saving…' : 'Save Changes'}</Button>
           </>
         }
@@ -898,7 +901,7 @@ function RolesTab() {
         maxWidth="max-w-3xl"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={close}>Cancel</Button>
             <Button onClick={saveCreate} disabled={saving || !createForm.name.trim()}>{saving ? 'Saving…' : 'Create Role'}</Button>
           </>
         }
@@ -929,7 +932,7 @@ function RolesTab() {
         onClose={() => setDeleteRole(null)}
         title="Delete Role"
         maxWidth="max-w-md"
-        footer={<><Button variant="ghost" onClick={() => setDeleteRole(null)}>Cancel</Button><Button onClick={confirmDelete} className="bg-rose-600 hover:bg-rose-700">Delete</Button></>}
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={confirmDelete} className="bg-rose-600 hover:bg-rose-700">Delete</Button></>}
       >
         <div className="py-2 space-y-3">
           <div className="flex items-start gap-3 p-3 rounded-xl bg-rose-50 border border-rose-200">
@@ -1472,7 +1475,7 @@ function POSIntegrationsTab() {
         )}
 
         <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Integration"
-          footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
+          footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
           <p className="py-2 text-sm text-muted-foreground">Delete <span className="font-semibold text-foreground">{deleteConfirm?.name}</span>? This removes the configuration only — imported invoices are preserved.</p>
         </Modal>
       </div>
@@ -1542,7 +1545,7 @@ function POSIntegrationsTab() {
       </div>
 
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editId ? "Edit Integration" : "Add POS Integration"} maxWidth="max-w-2xl"
-        footer={<><Button variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update' : 'Create'}</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave}>{editId ? 'Update' : 'Create'}</Button></>}>
         <div className="space-y-5 py-2 max-h-[60vh] overflow-y-auto">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Integration Name *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Petpooja Main Branch" /></div>
@@ -1637,11 +1640,307 @@ export default function Masters() {
       </div>
 
       {activeTab === 'config' && <CategoriesConfigTab />}
+      {activeTab === 'expense-types' && <ExpenseCostTypesTab />}
       {activeTab === 'users' && <UsersTab />}
       {activeTab === 'roles' && <RolesTab />}
       {activeTab === 'notifications' && <NotificationsTab />}
       {activeTab === 'pos' && <POSIntegrationsTab />}
       {activeTab === 'audit' && <AuditLogsTab />}
+    </div>
+  );
+}
+
+// ============================================================
+// Expense Cost Types
+// ============================================================
+type ExpenseCostType = {
+  id: number;
+  code: string;
+  label: string;
+  description: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  isSystem: boolean;
+  createdAt: string;
+};
+
+type CostTypeFormState = {
+  code: string;
+  label: string;
+  description: string;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+const blankCostTypeForm = (): CostTypeFormState => ({
+  code: '',
+  label: '',
+  description: '',
+  sortOrder: 100,
+  isActive: true,
+});
+
+function ExpenseCostTypesTab() {
+  const { toast } = useToast();
+  const [rows, setRows] = useState<ExpenseCostType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editIsSystem, setEditIsSystem] = useState(false);
+  const [form, setForm] = useState<CostTypeFormState>(blankCostTypeForm());
+  const [deleteConfirm, setDeleteConfirm] = useState<ExpenseCostType | null>(null);
+
+  const formDirty = useFormDirty(modalOpen, form);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await customFetch<ExpenseCostType[]>('/api/expense-cost-types?includeInactive=1');
+      setRows(data);
+    } catch (e: any) {
+      toast({ title: 'Failed to load cost types', description: e?.message, variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const openCreate = () => {
+    setEditId(null);
+    setEditIsSystem(false);
+    setForm(blankCostTypeForm());
+    setModalOpen(true);
+  };
+
+  const openEdit = (row: ExpenseCostType) => {
+    setEditId(row.id);
+    setEditIsSystem(row.isSystem);
+    setForm({
+      code: row.code,
+      label: row.label,
+      description: row.description ?? '',
+      sortOrder: row.sortOrder,
+      isActive: row.isActive,
+    });
+    setModalOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.label.trim()) { toast({ title: 'Label is required', variant: 'destructive' }); return; }
+    if (!editId && !form.code.trim()) { toast({ title: 'Code is required', variant: 'destructive' }); return; }
+    try {
+      const base = import.meta.env.BASE_URL || '/';
+      const token = localStorage.getItem('token');
+      const url = editId ? `${base}api/expense-cost-types/${editId}` : `${base}api/expense-cost-types`;
+      const method = editId ? 'PATCH' : 'POST';
+      // System rows: omit code so backend can't even attempt to change it.
+      const body: any = {
+        label: form.label.trim(),
+        description: form.description.trim() || null,
+        sortOrder: Number(form.sortOrder) || 0,
+        isActive: form.isActive,
+      };
+      if (!editId || !editIsSystem) body.code = form.code.trim();
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let msg = text;
+        try { const j = JSON.parse(text); msg = j.error || text; } catch { /* keep raw */ }
+        throw new Error(msg);
+      }
+      setModalOpen(false);
+      await reload();
+      toast({ title: editId ? 'Cost type updated' : 'Cost type created' });
+    } catch (e: any) {
+      toast({ title: 'Save failed', description: e?.message, variant: 'destructive' });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    try {
+      const base = import.meta.env.BASE_URL || '/';
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${base}api/expense-cost-types/${deleteConfirm.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let msg = text;
+        try { const j = JSON.parse(text); msg = j.error || text; } catch { /* keep raw */ }
+        throw new Error(msg);
+      }
+      setDeleteConfirm(null);
+      await reload();
+      toast({ title: 'Cost type deleted' });
+    } catch (e: any) {
+      toast({ title: 'Delete failed', description: e?.message, variant: 'destructive' });
+    }
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+      <div className="p-6 border-b border-border flex justify-between items-center bg-muted/20">
+        <div className="flex items-center gap-3">
+          <Tag className="text-primary" size={20}/>
+          <div>
+            <h3 className="font-display font-semibold text-lg">Expense Cost Types</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Manage the cost-type buckets shown in the Expense form. System types cannot be deleted, but you can deactivate them.</p>
+          </div>
+        </div>
+        <Button onClick={openCreate} data-testid="btn-add-cost-type"><Plus size={16}/> Add Cost Type</Button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-muted/40 text-muted-foreground border-b font-medium uppercase text-xs tracking-wider">
+            <tr>
+              <th className="px-6 py-3">Code</th>
+              <th className="px-6 py-3">Label</th>
+              <th className="px-6 py-3">Description</th>
+              <th className="px-6 py-3 text-right">Sort</th>
+              <th className="px-6 py-3 text-center">Status</th>
+              <th className="px-6 py-3 text-center">Type</th>
+              <th className="px-6 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {loading ? (
+              <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">Loading…</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No cost types yet.</td></tr>
+            ) : rows.map(row => (
+              <tr key={row.id} className="hover:bg-muted/40 transition-colors" data-testid={`row-cost-type-${row.id}`}>
+                <td className="px-6 py-3 font-mono text-xs text-muted-foreground">{row.code}</td>
+                <td className="px-6 py-3 font-medium text-foreground">{row.label}</td>
+                <td className="px-6 py-3 text-muted-foreground max-w-xs truncate">{row.description || <span className="opacity-50">—</span>}</td>
+                <td className="px-6 py-3 text-right text-muted-foreground">{row.sortOrder}</td>
+                <td className="px-6 py-3 text-center">
+                  {row.isActive
+                    ? <Badge variant="success">Active</Badge>
+                    : <Badge variant="neutral">Inactive</Badge>}
+                </td>
+                <td className="px-6 py-3 text-center">
+                  {row.isSystem
+                    ? <Badge variant="neutral">System</Badge>
+                    : <Badge variant="warning">Custom</Badge>}
+                </td>
+                <td className="px-6 py-3 text-right">
+                  <div className="flex justify-end gap-1">
+                    <button
+                      onClick={() => openEdit(row)}
+                      className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      title="Edit"
+                      data-testid={`btn-edit-cost-type-${row.id}`}
+                    >
+                      <Pencil size={14}/>
+                    </button>
+                    <button
+                      onClick={() => !row.isSystem && setDeleteConfirm(row)}
+                      disabled={row.isSystem}
+                      className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-muted-foreground hover:text-red-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                      title={row.isSystem ? 'System types cannot be deleted (you can deactivate them)' : 'Delete'}
+                      data-testid={`btn-delete-cost-type-${row.id}`}
+                    >
+                      <Trash2 size={14}/>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        dirty={formDirty}
+        title={editId ? 'Edit Cost Type' : 'Add Cost Type'}
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="ghost" onClick={close}>Cancel</Button>
+            <Button onClick={handleSave} data-testid="btn-save-cost-type">{editId ? 'Update' : 'Create'}</Button>
+          </>
+        }
+      >
+        <div className="space-y-5 py-2">
+          <div>
+            <Label>Code</Label>
+            <Input
+              value={form.code}
+              onChange={(e: any) => setForm({ ...form, code: e.target.value })}
+              placeholder="e.g. MARKETING"
+              disabled={!!editId && editIsSystem}
+              data-testid="input-cost-type-code"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Letters / numbers / underscores. Stored in uppercase. {editIsSystem && 'System types\u2019 codes are locked.'}
+            </p>
+          </div>
+          <div>
+            <Label>Label</Label>
+            <Input
+              value={form.label}
+              onChange={(e: any) => setForm({ ...form, label: e.target.value })}
+              placeholder="e.g. Marketing & Promotions"
+              data-testid="input-cost-type-label"
+            />
+          </div>
+          <div>
+            <Label>Description (optional)</Label>
+            <Input
+              value={form.description}
+              onChange={(e: any) => setForm({ ...form, description: e.target.value })}
+              placeholder="What does this bucket cover?"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Sort Order</Label>
+              <Input
+                type="number"
+                value={form.sortOrder}
+                onChange={(e: any) => setForm({ ...form, sortOrder: Number(e.target.value) })}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">Lower numbers appear first.</p>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select
+                value={form.isActive ? 'active' : 'inactive'}
+                onChange={(e: any) => setForm({ ...form, isActive: e.target.value === 'active' })}
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive (hidden in expense form)</option>
+              </Select>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        title="Delete Cost Type"
+        footer={
+          <>
+            <Button variant="ghost" onClick={close}>Cancel</Button>
+            <Button variant="danger" onClick={handleDelete} data-testid="btn-confirm-delete-cost-type">Delete</Button>
+          </>
+        }
+      >
+        <p className="py-2 text-sm text-muted-foreground">
+          Delete <span className="font-semibold text-foreground">{deleteConfirm?.label}</span>? If any expense uses this code, the delete will be blocked — deactivate instead.
+        </p>
+      </Modal>
     </div>
   );
 }

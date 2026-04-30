@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, useFormDirty } from '../components/ui-extras';
 import { Plus, Search, Cake, Heart, Edit2, Trash2, Eye, Phone, RefreshCw } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -44,6 +44,7 @@ export default function CustomersPage() {
   const [detail, setDetail] = useState<any>(null);
   const [reminders, setReminders] = useState<{ birthdays: any[]; anniversaries: any[] }>({ birthdays: [], anniversaries: [] });
   const [form, setForm] = useState({ name: '', phone: '', email: '', birthday: '', anniversary: '', notes: '' });
+  const customerFormDirty = useFormDirty(modal, form);
   const [dupConfirm, setDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
 
   const load = async () => {
@@ -241,8 +242,8 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      <Modal isOpen={modal} onClose={() => setModal(false)} title={editing ? 'Edit Customer' : 'New Customer'} maxWidth="max-w-lg"
-        footer={<><Button variant="ghost" onClick={() => setModal(false)}>Cancel</Button><Button onClick={save}>{editing ? 'Save' : 'Create'}</Button></>}>
+      <Modal isOpen={modal} onClose={() => setModal(false)} dirty={customerFormDirty} title={editing ? 'Edit Customer' : 'New Customer'} maxWidth="max-w-lg"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={save}>{editing ? 'Save' : 'Create'}</Button></>}>
         <div className="space-y-5 py-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Name *</Label><Input value={form.name} onChange={(e: any) => setForm(f => ({ ...f, name: e.target.value }))} /></div>

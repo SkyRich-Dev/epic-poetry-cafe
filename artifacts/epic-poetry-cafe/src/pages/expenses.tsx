@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useListExpenses, useCreateExpense, useListVendors } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, formatDate, Badge, DateFilter, VerifyButton, apiVerify, apiUnverify, useFormDirty } from '../components/ui-extras';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { customFetch } from '@workspace/api-client-react/custom-fetch';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+
+type ExpenseCostType = { id: number; code: string; label: string; description: string | null; isActive: boolean; sortOrder: number; isSystem: boolean };
 
 type ExpenseFormState = {
   expenseDate: string;
@@ -41,14 +44,36 @@ export default function Expenses() {
   const { toast } = useToast();
   const createMut = useCreateExpense();
 
+  // Cost types are now admin-managed master data instead of a hardcoded enum,
+  // so the dropdown is whatever is currently active. We keep any expense's
+  // legacy cost type code working in the badge fallback below.
+  const [costTypes, setCostTypes] = useState<ExpenseCostType[]>([]);
+  useEffect(() => {
+    customFetch<ExpenseCostType[]>('/api/expense-cost-types')
+      .then((rows) => setCostTypes(rows))
+      .catch(() => setCostTypes([]));
+  }, []);
+  const costTypeByCode = useMemo(() => {
+    const m = new Map<string, ExpenseCostType>();
+    for (const r of costTypes) m.set(r.code, r);
+    return m;
+  }, [costTypes]);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [formData, setFormData] = useState<ExpenseFormState>(blankExpenseForm());
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; desc: string } | null>(null);
 
+  const formDirty = useFormDirty(isModalOpen, formData);
+
+  const defaultCostType = (): string => {
+    if (costTypeByCode.has('FIXED')) return 'FIXED';
+    return costTypes[0]?.code ?? 'FIXED';
+  };
+
   const openCreate = () => {
     setEditId(null);
-    setFormData(blankExpenseForm());
+    setFormData({ ...blankExpenseForm(), costType: defaultCostType() });
     setIsModalOpen(true);
   };
   const openEdit = (e: any) => {
@@ -56,7 +81,7 @@ export default function Expenses() {
     setFormData({
       expenseDate: e.expenseDate,
       amount: Number(e.amount),
-      costType: e.costType || 'FIXED',
+      costType: e.costType || defaultCostType(),
       description: e.description || '',
       paymentMode: e.paymentMode || 'CARD',
       vendorId: e.vendorId ?? null,
@@ -152,7 +177,7 @@ export default function Expenses() {
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(e.expenseDate)}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{e.description || 'Generic Expense'}</td>
                 <td className="px-6 py-4 text-muted-foreground">{e.vendorName || <span className="opacity-50">—</span>}</td>
-                <td className="px-6 py-4"><Badge variant="neutral">{e.costType === 'STAFF_FOOD' ? 'Staff Food' : e.costType === 'CLEANING' ? 'Cleaning' : e.costType}</Badge></td>
+                <td className="px-6 py-4"><Badge variant="neutral">{costTypeByCode.get(e.costType)?.label ?? (e.costType === 'STAFF_FOOD' ? 'Staff Food' : e.costType === 'CLEANING' ? 'Cleaning' : e.costType)}</Badge></td>
                 <td className="px-6 py-4 text-muted-foreground">{e.paymentMode}</td>
                 <td className="px-6 py-4 text-right font-medium text-rose-600">{formatCurrency(e.amount)}</td>
                 <td className="px-6 py-4 text-center" data-testid={`status-expense-${e.id}`}>
@@ -181,12 +206,23 @@ export default function Expenses() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editId ? "Edit Expense" : "Log Expense"} maxWidth="max-w-lg"
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={formDirty} title={editId ? "Edit Expense" : "Log Expense"} maxWidth="max-w-lg"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending}>{editId ? 'Update' : 'Save'}</Button></>}>
         <div className="space-y-5 py-2">
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Date</Label><Input type="date" max={new Date().toISOString().split('T')[0]} value={formData.expenseDate} onChange={(e:any) => setFormData({...formData, expenseDate: e.target.value})} /></div>
-            <div><Label>Cost Type</Label><Select value={formData.costType} onChange={(e:any) => setFormData({...formData, costType: e.target.value})}><option value="FIXED">Fixed (Rent/Salary)</option><option value="VARIABLE">Variable (Supplies/Repairs)</option><option value="UTILITY">Utility (Water/Power)</option><option value="STAFF_FOOD">Staff Food</option><option value="CLEANING">Cleaning Materials</option></Select></div>
+            <div>
+              <Label>Cost Type</Label>
+              <Select data-testid="select-expense-cost-type" value={formData.costType} onChange={(e:any) => setFormData({...formData, costType: e.target.value})}>
+                {/* Render whatever the API has, plus the current value if it's somehow no longer active so editing legacy rows still works. */}
+                {costTypes.map((t) => (
+                  <option key={t.code} value={t.code}>{t.label}</option>
+                ))}
+                {formData.costType && !costTypeByCode.has(formData.costType) && (
+                  <option value={formData.costType}>{formData.costType} (inactive)</option>
+                )}
+              </Select>
+            </div>
           </div>
           <div><Label>Description</Label><Input value={formData.description} onChange={(e:any) => setFormData({...formData, description: e.target.value})} placeholder="e.g. Plumber repair" /></div>
           <div>
@@ -255,7 +291,7 @@ export default function Expenses() {
       </Modal>
 
       <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Expense"
-        footer={<><Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button variant="danger" onClick={handleDelete}>Delete</Button></>}>
         <p className="py-2 text-sm text-muted-foreground">Are you sure you want to delete <span className="font-semibold text-foreground">{deleteConfirm?.desc}</span>?</p>
       </Modal>
     </div>

@@ -23,6 +23,14 @@ interface Category {
   type?: string | null;
 }
 
+interface ExpenseCostType {
+  id: number;
+  code: string;
+  label: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
 const PAYMENT_MODES = ["cash", "card", "upi", "petty cash", "bank"] as const;
 
 export default function NewExpenseScreen() {
@@ -37,6 +45,7 @@ export default function NewExpenseScreen() {
   );
   const [paidBy, setPaidBy] = useState("");
   const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [costTypeCode, setCostTypeCode] = useState<string | null>(null);
 
   const catsQ = useQuery({
     queryKey: ["categories", "expense"],
@@ -44,11 +53,29 @@ export default function NewExpenseScreen() {
       (await api.get<Category[]>("/categories?type=expense")) ?? [],
   });
 
+  const costTypesQ = useQuery({
+    queryKey: ["expense-cost-types"],
+    queryFn: async () =>
+      (await api.get<ExpenseCostType[]>("/expense-cost-types")) ?? [],
+  });
+
+  // Default the cost type once the list arrives. Prefer VARIABLE if
+  // present (matches the previous hardcoded default), otherwise the
+  // first active row.
+  React.useEffect(() => {
+    if (costTypeCode || !costTypesQ.data?.length) return;
+    const variable = costTypesQ.data.find((t) => t.code === "VARIABLE");
+    setCostTypeCode((variable ?? costTypesQ.data[0]).code);
+  }, [costTypesQ.data, costTypeCode]);
+
   const submit = useMutation({
     mutationFn: async () => {
       const amt = Number(amount);
       if (!Number.isFinite(amt) || amt <= 0) {
         throw new Error("Enter a valid amount.");
+      }
+      if (!costTypeCode) {
+        throw new Error("Pick a cost type.");
       }
       return api.post("/expenses", {
         expenseDate: todayISO(),
@@ -58,7 +85,10 @@ export default function NewExpenseScreen() {
         paymentMode,
         paidBy: paidBy.trim() || undefined,
         categoryId: categoryId ?? undefined,
-        costType: "variable",
+        // Send the canonical master code as-is (uppercase). The server
+        // accepts free-form strings; case-insensitive lookups handle
+        // legacy lowercase rows already in the table.
+        costType: costTypeCode,
       });
     },
     onSuccess: () => {
@@ -117,6 +147,24 @@ export default function NewExpenseScreen() {
                 value={paymentMode}
                 onChange={setPaymentMode}
               />
+            </Card>
+          </View>
+
+          <View>
+            <SectionHeader title="Cost type" />
+            <Card>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {(costTypesQ.data ?? [])
+                  .filter((t) => t.isActive)
+                  .map((t) => (
+                    <Chip
+                      key={t.code}
+                      label={t.label}
+                      active={costTypeCode === t.code}
+                      onPress={() => setCostTypeCode(t.code)}
+                    />
+                  ))}
+              </View>
             </Card>
           </View>
 

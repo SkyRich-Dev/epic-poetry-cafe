@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useListTrials, useCreateTrial, useGetTrial, useCreateTrialVersion, useConvertTrialToMenuItem, useUpdateTrial, useDeleteTrial } from '@workspace/api-client-react';
 import type { TrialVersion, TrialIngredientLine } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Modal, Badge, Select, formatCurrency } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, Badge, Select, formatCurrency, useFormDirty } from '../components/ui-extras';
 import { FlaskConical, Plus, ArrowLeft, Clock, Beaker, ChevronRight, Trash2, CheckCircle2, Package, IndianRupee, Timer, XCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
@@ -59,6 +59,8 @@ export default function Trials() {
   const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([emptyIngRow()]);
 
   const [expandedVersionId, setExpandedVersionId] = useState<number | null>(null);
+  const trialFormDirty = useFormDirty(isModalOpen, formData);
+  const versionFormDirty = useFormDirty(isVersionModalOpen, { versionForm, ingredientRows });
 
   const ingredients = useIngredients();
 
@@ -207,8 +209,8 @@ export default function Trials() {
           )}
         </div>
 
-        <Modal isOpen={isVersionModalOpen} onClose={() => setIsVersionModalOpen(false)} title="New R&D Version" maxWidth="max-w-2xl"
-          footer={<><Button variant="ghost" onClick={() => setIsVersionModalOpen(false)}>Cancel</Button><Button onClick={handleCreateVersion} disabled={createVersionMut.isPending}>{createVersionMut.isPending ? 'Creating...' : 'Create Version & Deduct Stock'}</Button></>}>
+        <Modal isOpen={isVersionModalOpen} onClose={() => setIsVersionModalOpen(false)} dirty={versionFormDirty} title="New R&D Version" maxWidth="max-w-2xl"
+          footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleCreateVersion} disabled={createVersionMut.isPending}>{createVersionMut.isPending ? 'Creating...' : 'Create Version & Deduct Stock'}</Button></>}>
           <div className="space-y-5 py-2">
             <div className="grid grid-cols-3 gap-x-4 gap-y-5">
               <div><Label>Trial Date</Label><Input type="date" value={versionForm.trialDate} onChange={e => setVersionForm({ ...versionForm, trialDate: e.target.value })} /></div>
@@ -344,8 +346,8 @@ export default function Trials() {
         )
       )}
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Initiate New Trial" maxWidth="max-w-lg"
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleCreateTrial} disabled={createMut.isPending}>Create Trial</Button></>}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={trialFormDirty} title="Initiate New Trial" maxWidth="max-w-lg"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleCreateTrial} disabled={createMut.isPending}>Create Trial</Button></>}>
         <div className="space-y-5 py-2">
           <div><Label>Proposed Item Name</Label><Input value={formData.proposedItemName} onChange={(e: any) => setFormData({ ...formData, proposedItemName: e.target.value })} placeholder="e.g. Matcha Latte, Cold Brew Tonic" /></div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">

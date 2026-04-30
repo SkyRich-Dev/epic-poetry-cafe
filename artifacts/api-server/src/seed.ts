@@ -1,4 +1,4 @@
-import { db, usersTable, categoriesTable, uomTable, systemConfigTable, vendorsTable, ingredientsTable } from "@workspace/db";
+import { db, usersTable, categoriesTable, uomTable, systemConfigTable, vendorsTable, ingredientsTable, expenseCostTypesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 import { seedBuiltInRoles } from "./routes/roles";
@@ -7,12 +7,35 @@ function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
+const SYSTEM_EXPENSE_COST_TYPES: Array<{ code: string; label: string; description: string; sortOrder: number }> = [
+  { code: "FIXED",      label: "Fixed (Rent / Salary)",      description: "Recurring fixed costs that don't vary with activity",  sortOrder: 10 },
+  { code: "VARIABLE",   label: "Variable (Supplies / Repairs)", description: "Costs that vary with activity / volume",            sortOrder: 20 },
+  { code: "UTILITY",    label: "Utility (Water / Power)",    description: "Utility bills",                                          sortOrder: 30 },
+  { code: "STAFF_FOOD", label: "Staff Food",                 description: "Meals provided to staff",                                sortOrder: 40 },
+  { code: "CLEANING",   label: "Cleaning Materials",         description: "Cleaning and sanitation supplies",                       sortOrder: 50 },
+];
+
+async function seedSystemExpenseCostTypes() {
+  // Idempotent: insert each system row only if its code is missing. Lets us
+  // ship new system cost types in code without disturbing user-created ones.
+  const existing = await db.select({ code: expenseCostTypesTable.code }).from(expenseCostTypesTable);
+  const have = new Set(existing.map((r) => r.code));
+  const toInsert = SYSTEM_EXPENSE_COST_TYPES.filter((r) => !have.has(r.code));
+  if (toInsert.length > 0) {
+    await db.insert(expenseCostTypesTable).values(toInsert.map((r) => ({ ...r, isSystem: true, isActive: true })));
+  }
+}
+
 export async function seed() {
   // Always (idempotently) ensure built-in roles + their default
   // permission sets are present, even on already-seeded databases.
   // This lets us ship new permissions in code and have them applied
   // on the next boot without a separate migration.
   await seedBuiltInRoles();
+  // Same pattern: ensure the 5 hardcoded-from-day-one expense cost types
+  // exist as system rows so existing data and new admin-managed rows can
+  // coexist without breaking the expense form.
+  await seedSystemExpenseCostTypes();
 
   const existingUsers = await db.select().from(usersTable);
   if (existingUsers.length > 0) {

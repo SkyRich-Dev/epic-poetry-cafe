@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useListPurchases, useCreatePurchase, useListVendors, useListIngredients } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, formatDate, DateFilter, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, formatDate, DateFilter, VerifyButton, apiVerify, apiUnverify, useFormDirty } from '../components/ui-extras';
 import { Plus, Receipt, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
@@ -31,6 +31,7 @@ export default function Purchases() {
   });
   
   const [lines, setLines] = useState<any[]>([]);
+  const purchaseFormDirty = useFormDirty(isModalOpen, { formData, lines });
 
   const openCreate = () => {
     setFormData({ purchaseDate: new Date().toISOString().split('T')[0], vendorId: vendors?.[0]?.id || 0, invoiceNumber: '', paymentMode: 'CASH', paymentStatus: 'PAID' });
@@ -131,8 +132,8 @@ export default function Purchases() {
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Record New Purchase" maxWidth="max-w-4xl"
-        footer={<><Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending || lines.length === 0}>Complete Purchase</Button></>}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} dirty={purchaseFormDirty} title="Record New Purchase" maxWidth="max-w-4xl"
+        footer={(close) => <><Button variant="ghost" onClick={close}>Cancel</Button><Button onClick={handleSave} disabled={createMut.isPending || lines.length === 0}>Complete Purchase</Button></>}>
         <div className="space-y-6 py-2">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-transparent rounded-xl border border-border/50">
             <div>

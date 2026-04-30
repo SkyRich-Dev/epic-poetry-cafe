@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { customFetch } from '@workspace/api-client-react/custom-fetch';
-import { PageHeader, Button, Input, Label, Modal, formatCurrency } from '../components/ui-extras';
+import { PageHeader, Button, Input, Label, Modal, formatCurrency, useFormDirty } from '../components/ui-extras';
 import { Plus, Pencil, Trash2, UserPlus, Clock, Users, CalendarDays, Briefcase, IndianRupee, CheckCircle2, Circle, Upload, ExternalLink, Settings2, Info, Wallet, Gift, AlertOctagon, TrendingUp } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -56,16 +56,19 @@ export default function EmployeesPage() {
   const [empModal, setEmpModal] = useState(false);
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
   const [empForm, setEmpForm] = useState({ name: '', contactNumber: '', position: 'Barista', salary: '', employmentType: 'full-time' });
+  const empFormDirty = useFormDirty(empModal, empForm);
 
   const [shiftModal, setShiftModal] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [shiftForm, setShiftForm] = useState({ name: '', startTime: '09:00', endTime: '17:00' });
+  const shiftFormDirty = useFormDirty(shiftModal, shiftForm);
 
   const [salaryMonth, setSalaryMonth] = useState(new Date().getMonth() + 1);
   const [salaryYear, setSalaryYear] = useState(new Date().getFullYear());
 
   const [salarySettingsModal, setSalarySettingsModal] = useState(false);
   const [salarySettings, setSalarySettings] = useState({ allowedWeekOffsPerMonth: 4, absentPenaltyMultiplier: 1 });
+  const salarySettingsDirty = useFormDirty(salarySettingsModal, salarySettings);
   const [detailRecord, setDetailRecord] = useState<SalaryRecord | null>(null);
 
   const [salarySubTab, setSalarySubTab] = useState<'records' | 'advances' | 'adjustments'>('records');
@@ -73,8 +76,10 @@ export default function EmployeesPage() {
   const [adjustments, setAdjustments] = useState<SalaryAdjustment[]>([]);
   const [advanceModal, setAdvanceModal] = useState(false);
   const [advanceForm, setAdvanceForm] = useState({ employeeId: '', advanceDate: new Date().toISOString().split('T')[0], amount: '', reason: '' });
+  const advanceFormDirty = useFormDirty(advanceModal, advanceForm);
   const [adjustmentModal, setAdjustmentModal] = useState(false);
   const [adjustmentForm, setAdjustmentForm] = useState({ employeeId: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(), type: 'bonus' as 'bonus' | 'incentive' | 'penalty', amount: '', reason: '' });
+  const adjustmentFormDirty = useFormDirty(adjustmentModal, adjustmentForm);
 
   const loadEmployees = useCallback(async () => {
     setLoading(true);
@@ -360,7 +365,7 @@ export default function EmployeesPage() {
             </table>
           </div>
 
-          <Modal isOpen={empModal} onClose={() => setEmpModal(false)} title={editingEmp ? 'Edit Employee' : 'Add Employee'}>
+          <Modal isOpen={empModal} onClose={() => setEmpModal(false)} dirty={empFormDirty} title={editingEmp ? 'Edit Employee' : 'Add Employee'}>
             <div className="space-y-5">
               <div><Label>Name *</Label><Input value={empForm.name} onChange={e => setEmpForm({ ...empForm, name: e.target.value })} placeholder="Employee name" /></div>
               <div><Label>Contact Number</Label><Input value={empForm.contactNumber} onChange={e => setEmpForm({ ...empForm, contactNumber: e.target.value })} placeholder="Phone number" /></div>
@@ -438,7 +443,7 @@ export default function EmployeesPage() {
             </table>
           </div>
 
-          <Modal isOpen={shiftModal} onClose={() => setShiftModal(false)} title={editingShift ? 'Edit Shift' : 'Add Shift'}>
+          <Modal isOpen={shiftModal} onClose={() => setShiftModal(false)} dirty={shiftFormDirty} title={editingShift ? 'Edit Shift' : 'Add Shift'}>
             <div className="space-y-5">
               <div><Label>Shift Name *</Label><Input value={shiftForm.name} onChange={e => setShiftForm({ ...shiftForm, name: e.target.value })} placeholder="e.g. Morning Shift" /></div>
               <div><Label>Start Time *</Label><Input type="time" value={shiftForm.startTime} onChange={e => setShiftForm({ ...shiftForm, startTime: e.target.value })} /></div>
@@ -693,7 +698,7 @@ export default function EmployeesPage() {
           </div>
         </div>)}
 
-          <Modal isOpen={advanceModal} onClose={() => setAdvanceModal(false)} title="Record Salary Advance">
+          <Modal isOpen={advanceModal} onClose={() => setAdvanceModal(false)} dirty={advanceFormDirty} title="Record Salary Advance">
             <div className="space-y-5">
               <div><Label>Employee *</Label>
                 <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10" value={advanceForm.employeeId} onChange={e => setAdvanceForm({ ...advanceForm, employeeId: e.target.value })}>
@@ -714,7 +719,7 @@ export default function EmployeesPage() {
             </div>
           </Modal>
 
-          <Modal isOpen={adjustmentModal} onClose={() => setAdjustmentModal(false)} title="Add Bonus / Incentive / Penalty">
+          <Modal isOpen={adjustmentModal} onClose={() => setAdjustmentModal(false)} dirty={adjustmentFormDirty} title="Add Bonus / Incentive / Penalty">
             <div className="space-y-5">
               <div><Label>Employee *</Label>
                 <select className="w-full rounded-xl border border-input bg-background px-3.5 py-2 text-sm h-10" value={adjustmentForm.employeeId} onChange={e => setAdjustmentForm({ ...adjustmentForm, employeeId: e.target.value })}>
@@ -746,7 +751,7 @@ export default function EmployeesPage() {
             </div>
           </Modal>
 
-          <Modal isOpen={salarySettingsModal} onClose={() => setSalarySettingsModal(false)} title="Salary Calculation Settings">
+          <Modal isOpen={salarySettingsModal} onClose={() => setSalarySettingsModal(false)} dirty={salarySettingsDirty} title="Salary Calculation Settings">
             <div className="space-y-5">
               <div>
                 <Label>Allowed Week-Offs Per Month</Label>
