@@ -34,14 +34,6 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
   }
   const invoiceNo = `PP-${orderRef}`;
 
-  const existing = await db.select({ id: salesInvoicesTable.id })
-    .from(salesInvoicesTable)
-    .where(and(eq(salesInvoicesTable.invoiceNo, invoiceNo), eq(salesInvoicesTable.sourceType, PETPOOJA_SOURCE)))
-    .limit(1);
-  if (existing.length > 0) {
-    return { created: false, invoiceNo, autoCreated: [], reason: "already_imported" };
-  }
-
   const createdOn = ppOrder.created_on || "";
   const salesDate = createdOn ? createdOn.split(" ")[0] : new Date().toISOString().split("T")[0];
   const invoiceTime = createdOn ? createdOn.split(" ")[1] || "" : "";
@@ -70,116 +62,6 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
   const packagingCharge = Number(ppOrder.packaging_charge || 0);
   const deliveryCharges = Number(ppOrder.delivery_charges || 0);
 
-  const allCategories = await db.select().from(categoriesTable);
-  const categoryByName = new Map(allCategories.map(c => [c.name.toLowerCase().trim(), c]));
-  const allMenuItems = await db.select().from(menuItemsTable);
-  const menuByName = new Map(allMenuItems.map(m => [m.name.toLowerCase().trim(), m]));
-  const autoCreated: string[] = [];
-  const lineData: any[] = [];
-
-  for (const item of ppItems) {
-    const ppItemName = String(item.name || "").trim();
-    const ppCategoryName = String(item.category_name || "").trim();
-    const qty = Number(item.quantity || 1);
-    const itemPrice = Number(item.price || 0);
-    const itemTotal = Number(item.total || itemPrice * qty);
-    const itemDiscount = Number(item.discount || 0);
-    const itemTax = Number(item.tax || 0);
-
-    let addonTotal = 0;
-    if (Array.isArray(item.addon)) {
-      for (const addon of item.addon) {
-        addonTotal += Number(addon.price || 0) * Number(addon.quantity || 1);
-      }
-    }
-
-    let menuItem = menuByName.get(ppItemName.toLowerCase().trim());
-    if (!menuItem) {
-      let categoryId: number | null = null;
-      if (ppCategoryName) {
-        let category = categoryByName.get(ppCategoryName.toLowerCase().trim());
-        if (!category) {
-          const [newCat] = await db.insert(categoriesTable).values({
-            name: ppCategoryName,
-            type: "menu",
-          }).returning();
-          category = newCat;
-          categoryByName.set(ppCategoryName.toLowerCase().trim(), category);
-          autoCreated.push(`Category: ${ppCategoryName}`);
-        }
-        categoryId = category.id;
-      }
-      const code = await generateCode("PP", "menu_items");
-      const [newItem] = await db.insert(menuItemsTable).values({
-        code,
-        name: ppItemName,
-        categoryId,
-        sellingPrice: itemPrice,
-        active: true,
-      }).returning();
-      menuItem = newItem;
-      menuByName.set(ppItemName.toLowerCase().trim(), menuItem);
-      autoCreated.push(`Menu Item: ${ppItemName} (${code}) @ ₹${itemPrice}`);
-    }
-
-    const usePrice = itemTotal > 0 ? itemTotal / qty : (menuItem.sellingPrice || itemPrice);
-    const grossWithAddons = (usePrice * qty) + addonTotal;
-
-    lineData.push({
-      menuItemId: menuItem.id,
-      itemCodeSnapshot: menuItem.code,
-      itemNameSnapshot: menuItem.name,
-      fixedPrice: usePrice,
-      quantity: qty,
-      grossLineAmount: grossWithAddons,
-      ppItemDiscount: itemDiscount,
-      ppItemTax: itemTax,
-      gstPercent: integration.defaultGstPercent || 5,
-    });
-  }
-
-  let grossAmount = lineData.reduce((s, l) => s + l.grossLineAmount, 0);
-  let totalGst = 0;
-  let totalTaxable = 0;
-  let totalFinal = 0;
-  const useOrderLevelTax = orderTaxTotal > 0;
-  const discountRatio = grossAmount > 0 ? totalDiscount / grossAmount : 0;
-
-  const finalLines = lineData.map(l => {
-    const lineDiscount = l.ppItemDiscount > 0
-      ? l.ppItemDiscount
-      : Math.round(l.grossLineAmount * discountRatio * 100) / 100;
-    const taxable = l.grossLineAmount - lineDiscount;
-    let gst: number;
-    if (useOrderLevelTax && grossAmount > 0) {
-      gst = Math.round((l.grossLineAmount / grossAmount) * orderTaxTotal * 100) / 100;
-    } else if (l.ppItemTax > 0) {
-      gst = l.ppItemTax;
-    } else {
-      gst = Math.round(taxable * l.gstPercent / 100 * 100) / 100;
-    }
-    const finalAmt = taxable + gst;
-    totalGst += gst;
-    totalTaxable += taxable;
-    totalFinal += finalAmt;
-    return {
-      menuItemId: l.menuItemId,
-      itemCodeSnapshot: l.itemCodeSnapshot,
-      itemNameSnapshot: l.itemNameSnapshot,
-      fixedPrice: l.fixedPrice,
-      quantity: l.quantity,
-      grossLineAmount: Math.round(l.grossLineAmount * 100) / 100,
-      lineDiscountAmount: Math.round(lineDiscount * 100) / 100,
-      discountedUnitPrice: l.quantity > 0 ? Math.round((l.grossLineAmount - lineDiscount) / l.quantity * 100) / 100 : 0,
-      taxableLineAmount: Math.round(taxable * 100) / 100,
-      gstPercent: l.gstPercent,
-      gstAmount: Math.round(gst * 100) / 100,
-      finalLineAmount: Math.round(finalAmt * 100) / 100,
-    };
-  });
-
-  const invoiceFinal = ppTotal > 0 ? ppTotal : Math.round(totalFinal * 100) / 100;
-
   const refParts: string[] = [];
   if (Array.isArray(partPayments) && partPayments.length > 0) {
     refParts.push(partPayments.map((pp: any) =>
@@ -199,8 +81,175 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
   if (deliveryCharges > 0) refParts.push(`Delivery: ₹${deliveryCharges}`);
   const paymentRef = refParts.join(" | ");
 
-  try {
-    await db.transaction(async (tx) => {
+  // Everything from the duplicate-check through invoice/line/category/menu inserts MUST run
+  // in one transaction so that on a 23505 race (concurrent import won) or any failure, the
+  // auto-created categories/menu items are rolled back instead of orphaned.
+  // We also retry up to 3 times on a transient menu_items.code race: generateCode()
+  // is a non-atomic max+1, so two concurrent imports auto-creating distinct new menu items
+  // can both compute the same code and one will fail with 23505 on menu_items_code_unique.
+  // Re-running the whole transaction picks up the just-committed code and tries the next number.
+  let txResult: ImportResult | null = null;
+  const MAX_ATTEMPTS = 3;
+  let lastErr: any = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      txResult = await db.transaction(async (tx) => {
+      const existing = await tx.select({ id: salesInvoicesTable.id })
+        .from(salesInvoicesTable)
+        .where(and(eq(salesInvoicesTable.invoiceNo, invoiceNo), eq(salesInvoicesTable.sourceType, PETPOOJA_SOURCE)))
+        .limit(1);
+      if (existing.length > 0) {
+        return { created: false, invoiceNo, autoCreated: [], reason: "already_imported" } as ImportResult;
+      }
+
+      const allCategories = await tx.select().from(categoriesTable);
+      const categoryByName = new Map(allCategories.map(c => [c.name.toLowerCase().trim(), c]));
+      const allMenuItems = await tx.select().from(menuItemsTable);
+      const menuByName = new Map(allMenuItems.map(m => [m.name.toLowerCase().trim(), m]));
+      const autoCreated: string[] = [];
+      const lineData: any[] = [];
+
+      for (const item of ppItems) {
+        const ppItemName = String(item.name || "").trim();
+        const ppCategoryName = String(item.category_name || "").trim();
+        const qty = Number(item.quantity || 1);
+        const itemPrice = Number(item.price || 0);
+        const itemTotal = Number(item.total || itemPrice * qty);
+        const itemDiscount = Number(item.discount || 0);
+        const itemTax = Number(item.tax || 0);
+
+        let addonTotal = 0;
+        if (Array.isArray(item.addon)) {
+          for (const addon of item.addon) {
+            addonTotal += Number(addon.price || 0) * Number(addon.quantity || 1);
+          }
+        }
+
+        const itemKey = ppItemName.toLowerCase().trim();
+        let menuItem = menuByName.get(itemKey);
+        if (!menuItem) {
+          // Acquire the advisory lock BEFORE deciding to create. Two concurrent
+          // transactions importing different orders that contain the same new item name
+          // would otherwise both read the stale snapshot, both decide the item is
+          // missing, and both insert duplicate rows (menu_items.name is not unique).
+          // The lock serializes the "check existence + maybe create" critical section
+          // across transactions; it is released automatically at commit/rollback.
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(${424201})`);
+
+          // Re-query under the lock to pick up any row another transaction just
+          // committed for this same name. Case-insensitive match using LOWER(TRIM()).
+          const recheck = await tx
+            .select()
+            .from(menuItemsTable)
+            .where(sql`LOWER(TRIM(${menuItemsTable.name})) = ${itemKey}`)
+            .limit(1);
+          if (recheck.length > 0) {
+            menuItem = recheck[0];
+            menuByName.set(itemKey, menuItem);
+          } else {
+            let categoryId: number | null = null;
+            if (ppCategoryName) {
+              const catKey = ppCategoryName.toLowerCase().trim();
+              let category = categoryByName.get(catKey);
+              if (!category) {
+                // Re-check categories under the same lock so two concurrent imports
+                // do not each insert a duplicate category row (categories.name has
+                // no unique constraint either).
+                const catRecheck = await tx
+                  .select()
+                  .from(categoriesTable)
+                  .where(sql`LOWER(TRIM(${categoriesTable.name})) = ${catKey} AND ${categoriesTable.type} = 'menu'`)
+                  .limit(1);
+                if (catRecheck.length > 0) {
+                  category = catRecheck[0];
+                } else {
+                  const [newCat] = await tx.insert(categoriesTable).values({
+                    name: ppCategoryName,
+                    type: "menu",
+                  }).returning();
+                  category = newCat;
+                  autoCreated.push(`Category: ${ppCategoryName}`);
+                }
+                categoryByName.set(catKey, category);
+              }
+              categoryId = category.id;
+            }
+            // Pass `tx` so MAX sees previously-inserted menu items in this same
+            // transaction (e.g. an order with two distinct new menu items would
+            // otherwise both compute the same code via a separate connection that
+            // can't see uncommitted rows).
+            const code = await generateCode("PP", "menu_items", tx);
+            const [newItem] = await tx.insert(menuItemsTable).values({
+              code,
+              name: ppItemName,
+              categoryId,
+              sellingPrice: itemPrice,
+              active: true,
+            }).returning();
+            menuItem = newItem;
+            menuByName.set(itemKey, menuItem);
+            autoCreated.push(`Menu Item: ${ppItemName} (${code}) @ ₹${itemPrice}`);
+          }
+        }
+
+        const usePrice = itemTotal > 0 ? itemTotal / qty : (menuItem.sellingPrice || itemPrice);
+        const grossWithAddons = (usePrice * qty) + addonTotal;
+
+        lineData.push({
+          menuItemId: menuItem.id,
+          itemCodeSnapshot: menuItem.code,
+          itemNameSnapshot: menuItem.name,
+          fixedPrice: usePrice,
+          quantity: qty,
+          grossLineAmount: grossWithAddons,
+          ppItemDiscount: itemDiscount,
+          ppItemTax: itemTax,
+          gstPercent: integration.defaultGstPercent || 5,
+        });
+      }
+
+      let grossAmount = lineData.reduce((s, l) => s + l.grossLineAmount, 0);
+      let totalGst = 0;
+      let totalTaxable = 0;
+      let totalFinal = 0;
+      const useOrderLevelTax = orderTaxTotal > 0;
+      const discountRatio = grossAmount > 0 ? totalDiscount / grossAmount : 0;
+
+      const finalLines = lineData.map(l => {
+        const lineDiscount = l.ppItemDiscount > 0
+          ? l.ppItemDiscount
+          : Math.round(l.grossLineAmount * discountRatio * 100) / 100;
+        const taxable = l.grossLineAmount - lineDiscount;
+        let gst: number;
+        if (useOrderLevelTax && grossAmount > 0) {
+          gst = Math.round((l.grossLineAmount / grossAmount) * orderTaxTotal * 100) / 100;
+        } else if (l.ppItemTax > 0) {
+          gst = l.ppItemTax;
+        } else {
+          gst = Math.round(taxable * l.gstPercent / 100 * 100) / 100;
+        }
+        const finalAmt = taxable + gst;
+        totalGst += gst;
+        totalTaxable += taxable;
+        totalFinal += finalAmt;
+        return {
+          menuItemId: l.menuItemId,
+          itemCodeSnapshot: l.itemCodeSnapshot,
+          itemNameSnapshot: l.itemNameSnapshot,
+          fixedPrice: l.fixedPrice,
+          quantity: l.quantity,
+          grossLineAmount: Math.round(l.grossLineAmount * 100) / 100,
+          lineDiscountAmount: Math.round(lineDiscount * 100) / 100,
+          discountedUnitPrice: l.quantity > 0 ? Math.round((l.grossLineAmount - lineDiscount) / l.quantity * 100) / 100 : 0,
+          taxableLineAmount: Math.round(taxable * 100) / 100,
+          gstPercent: l.gstPercent,
+          gstAmount: Math.round(gst * 100) / 100,
+          finalLineAmount: Math.round(finalAmt * 100) / 100,
+        };
+      });
+
+      const invoiceFinal = ppTotal > 0 ? ppTotal : Math.round(totalFinal * 100) / 100;
+
       const [invoice] = await tx.insert(salesInvoicesTable).values({
         salesDate,
         invoiceNo,
@@ -225,25 +274,55 @@ export async function importPetpoojaOrder(input: ImportInput): Promise<ImportRes
           ...line,
         });
       }
-    });
-  } catch (e: any) {
-    // Postgres unique violation = concurrent import already created this invoice. Treat as already_imported.
-    const code = e?.code || e?.cause?.code;
-    const msg = String(e?.message || "");
-    if (code === "23505" || msg.includes("sales_invoices_source_invoice_unique") || msg.includes("duplicate key")) {
-      return { created: false, invoiceNo, autoCreated: [], reason: "already_imported" };
+
+      return { created: true, invoiceNo, autoCreated } as ImportResult;
+      });
+      break; // success — exit retry loop
+    } catch (e: any) {
+      const code = e?.code || e?.cause?.code;
+      const msg = String(e?.message || "");
+      const constraint = e?.constraint || e?.cause?.constraint || "";
+      // (a) Sales-invoice race: concurrent import already created this invoice.
+      // The whole transaction (incl. any auto-created categories/menu items) is rolled back.
+      const isSalesInvoiceDup =
+        constraint === "sales_invoices_source_invoice_unique" ||
+        msg.includes("sales_invoices_source_invoice_unique");
+      if (isSalesInvoiceDup) {
+        return { created: false, invoiceNo, autoCreated: [], reason: "already_imported" };
+      }
+      // (b) Menu-item code race: generateCode() is non-atomic max+1, so two concurrent
+      // imports auto-creating distinct new menu items can compute the same code. The
+      // losing tx fails on menu_items_code_unique. Retry up to MAX_ATTEMPTS to pick up
+      // the just-committed code and try the next number.
+      const isMenuCodeDup =
+        code === "23505" &&
+        (constraint.startsWith("menu_items") ||
+          msg.includes("menu_items_code") ||
+          msg.includes('"menu_items"'));
+      if (isMenuCodeDup && attempt < MAX_ATTEMPTS) {
+        lastErr = e;
+        continue; // retry whole transaction
+      }
+      // Anything else (or out of retries) is a real error.
+      throw e;
     }
-    throw e;
   }
 
-  await db.update(posIntegrationsTable).set({
-    lastSyncAt: new Date(),
-    lastSyncStatus: "success",
-    lastSyncMessage: "1 synced",
-    totalOrdersSynced: sql`${posIntegrationsTable.totalOrdersSynced} + 1`,
-  }).where(eq(posIntegrationsTable.id, integration.id));
+  if (!txResult) {
+    // Should be unreachable: either we returned, broke with a result, or threw.
+    throw lastErr || new Error("Petpooja import failed without a result");
+  }
 
-  return { created: true, invoiceNo, autoCreated };
+  if (txResult.created) {
+    await db.update(posIntegrationsTable).set({
+      lastSyncAt: new Date(),
+      lastSyncStatus: "success",
+      lastSyncMessage: "1 synced",
+      totalOrdersSynced: sql`${posIntegrationsTable.totalOrdersSynced} + 1`,
+    }).where(eq(posIntegrationsTable.id, integration.id));
+  }
+
+  return txResult;
 }
 
 export interface UpsertCustomerInput {

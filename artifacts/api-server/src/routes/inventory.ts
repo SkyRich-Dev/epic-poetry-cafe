@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
-import { db, ingredientsTable, stockSnapshotsTable, stockAdjustmentsTable, purchaseLinesTable, purchasesTable, wasteEntriesTable } from "@workspace/db";
+import { db, ingredientsTable, stockSnapshotsTable, stockAdjustmentsTable, purchaseLinesTable, purchasesTable, wasteEntriesTable, categoriesTable } from "@workspace/db";
 import { SaveStockSnapshotBody, CreateStockAdjustmentBody, ListStockSnapshotsQueryParams } from "@workspace/api-zod";
 import { authMiddleware, adminOnly, managerOrAdmin } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
@@ -30,10 +30,25 @@ router.get("/inventory/low-stock", authMiddleware, managerOrAdmin, async (req, r
 });
 
 router.get("/inventory/stock-overview", async (_req, res): Promise<void> => {
-  const ingredients = await db.select().from(ingredientsTable).where(eq(ingredientsTable.active, true));
-  const overview = ingredients.map(ing => ({
+  const rows = await db
+    .select({
+      id: ingredientsTable.id,
+      name: ingredientsTable.name,
+      categoryId: ingredientsTable.categoryId,
+      categoryName: categoriesTable.name,
+      currentStock: ingredientsTable.currentStock,
+      stockUom: ingredientsTable.stockUom,
+      reorderLevel: ingredientsTable.reorderLevel,
+      weightedAvgCost: ingredientsTable.weightedAvgCost,
+    })
+    .from(ingredientsTable)
+    .leftJoin(categoriesTable, eq(ingredientsTable.categoryId, categoriesTable.id))
+    .where(eq(ingredientsTable.active, true));
+  const overview = rows.map(ing => ({
     ingredientId: ing.id,
     ingredientName: ing.name,
+    categoryId: ing.categoryId ?? null,
+    categoryName: ing.categoryName ?? null,
     currentStock: ing.currentStock,
     stockUom: ing.stockUom,
     reorderLevel: ing.reorderLevel,

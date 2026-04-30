@@ -119,6 +119,38 @@ async function httpJson(url: string, init: RequestInit & { timeoutMs?: number } 
   }
 }
 
+// SSRF guard: only allow https:// to known POS host suffixes. Blocks internal hostnames,
+// private IPs, link-local metadata, file:// schemes, etc. New providers must extend this list.
+const PETPOOJA_ALLOWED_HOST_SUFFIXES = [
+  "petpooja.com",
+  "petpooja.in",
+];
+
+export function assertSafeProviderUrl(rawUrl: string, allowedSuffixes: string[]): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new PosFetchError("config", `Invalid POS base URL: ${rawUrl}`);
+  }
+  if (parsed.protocol !== "https:") {
+    throw new PosFetchError("config", `POS base URL must use https:// (got ${parsed.protocol})`);
+  }
+  const host = parsed.hostname.toLowerCase();
+  // Reject IP literals outright — provider hosts must be DNS names.
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(":")) {
+    throw new PosFetchError("config", `POS base URL must use a provider hostname, not an IP address`);
+  }
+  const ok = allowedSuffixes.some(s => host === s || host.endsWith("." + s));
+  if (!ok) {
+    throw new PosFetchError(
+      "config",
+      `POS base URL host "${host}" is not in the allow-list. Allowed suffixes: ${allowedSuffixes.join(", ")}`,
+    );
+  }
+  return parsed;
+}
+
 async function fetchPetpoojaOrders(integration: PosIntegration, from: string, to: string): Promise<FetchResult> {
   if (!integration.accessToken) {
     throw new PosFetchError("config", "Access token is not configured for this Petpooja integration. Set the access token in integration settings before using manual fetch.");
@@ -126,8 +158,10 @@ async function fetchPetpoojaOrders(integration: PosIntegration, from: string, to
   if (!integration.restaurantId) {
     throw new PosFetchError("config", "Restaurant ID is not configured for this Petpooja integration.");
   }
-  const baseUrl = (integration.baseUrl || "https://api.petpooja.com").replace(/\/+$/, "");
-  const url = `${baseUrl}/orders/orderHistory`;
+  const rawBase = (integration.baseUrl || "https://api.petpooja.com").replace(/\/+$/, "");
+  // SSRF protection: validate base URL points at a real Petpooja host before making the request.
+  assertSafeProviderUrl(rawBase, PETPOOJA_ALLOWED_HOST_SUFFIXES);
+  const url = `${rawBase}/orders/orderHistory`;
   const payload = {
     restID: integration.restaurantId,
     app_key: integration.apiKey || undefined,

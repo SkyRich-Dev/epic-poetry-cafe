@@ -1,10 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useListIngredients, useCreateIngredient, useListCategories } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, Badge, formatCurrency, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
+
+const COMMON_UOMS = ['g', 'kg', 'ml', 'L', 'pcs', 'nos', 'piece', 'box', 'pack', 'dozen', 'bottle', 'can'];
+
+function UomInput({ value, onChange, placeholder, listId }: { value: string; onChange: (v: string) => void; placeholder?: string; listId: string }) {
+  return (
+    <>
+      <Input list={listId} value={value} onChange={(e: any) => onChange(e.target.value)} placeholder={placeholder} />
+      <datalist id={listId}>{COMMON_UOMS.map(u => <option key={u} value={u} />)}</datalist>
+    </>
+  );
+}
 
 const emptyForm = { name: '', categoryId: 0, stockUom: 'g', purchaseUom: 'kg', recipeUom: 'g', conversionFactor: 1000, currentCost: 0, reorderLevel: 0, active: true };
 
@@ -23,6 +34,30 @@ export default function Ingredients() {
   const [formData, setFormData] = useState(emptyForm);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
   const [dupConfirm, setDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
+  const [search, setSearch] = useState('');
+  const [filterCategoryId, setFilterCategoryId] = useState<number | 'all'>('all');
+  const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'category' | 'cost-asc' | 'cost-desc'>('name-asc');
+
+  const filteredSorted = useMemo(() => {
+    if (!ingredients) return [];
+    const q = search.trim().toLowerCase();
+    let rows = (ingredients as any[]).filter((i: any) => {
+      if (filterCategoryId !== 'all' && (i.categoryId ?? null) !== filterCategoryId) return false;
+      if (!q) return true;
+      return (i.name?.toLowerCase().includes(q)) || (i.code?.toLowerCase().includes(q));
+    });
+    rows = [...rows].sort((a: any, b: any) => {
+      switch (sortBy) {
+        case 'name-asc': return (a.name || '').localeCompare(b.name || '');
+        case 'name-desc': return (b.name || '').localeCompare(a.name || '');
+        case 'category': return (a.categoryName || 'zzzz').localeCompare(b.categoryName || 'zzzz') || (a.name || '').localeCompare(b.name || '');
+        case 'cost-asc': return (a.weightedAvgCost || 0) - (b.weightedAvgCost || 0);
+        case 'cost-desc': return (b.weightedAvgCost || 0) - (a.weightedAvgCost || 0);
+        default: return 0;
+      }
+    });
+    return rows;
+  }, [ingredients, search, filterCategoryId, sortBy]);
 
   const openCreate = () => {
     setEditId(null);
@@ -115,6 +150,47 @@ export default function Ingredients() {
         {!isViewer && <Button onClick={openCreate}><Plus size={18}/> Add Ingredient</Button>}
       </PageHeader>
 
+      <div className="flex flex-wrap items-end gap-3" data-testid="ingredients-filters">
+        <div className="flex-1 min-w-[220px]">
+          <Label>Search</Label>
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <Input
+              data-testid="input-search-ingredients"
+              className="pl-9"
+              placeholder="Search by name or code..."
+              value={search}
+              onChange={(e: any) => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="w-56">
+          <Label>Category</Label>
+          <Select
+            data-testid="select-filter-category"
+            value={String(filterCategoryId)}
+            onChange={(e: any) => setFilterCategoryId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+          >
+            <option value="all">All categories</option>
+            {categories?.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+        </div>
+        <div className="w-56">
+          <Label>Sort by</Label>
+          <Select
+            data-testid="select-sort-by"
+            value={sortBy}
+            onChange={(e: any) => setSortBy(e.target.value as any)}
+          >
+            <option value="name-asc">Name (A &rarr; Z)</option>
+            <option value="name-desc">Name (Z &rarr; A)</option>
+            <option value="category">Category</option>
+            <option value="cost-asc">Cost (low &rarr; high)</option>
+            <option value="cost-desc">Cost (high &rarr; low)</option>
+          </Select>
+        </div>
+      </div>
+
       <div className="table-container">
         <table className="w-full text-sm text-left">
           <thead className="bg-muted text-muted-foreground border-b font-medium uppercase text-xs tracking-wider">
@@ -129,10 +205,12 @@ export default function Ingredients() {
               {!isViewer && <th className="px-6 py-4 text-right">Actions</th>}
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-border" data-testid="ingredients-table-body">
             {isLoading ? (
               <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
-            ) : ingredients?.map((item: any) => (
+            ) : filteredSorted.length === 0 ? (
+              <tr><td colSpan={8} className="px-6 py-8 text-center text-muted-foreground">No ingredients match your filters.</td></tr>
+            ) : filteredSorted.map((item: any) => (
               <tr key={item.id} className="table-row-hover">
                 <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{item.code}</td>
                 <td className="px-6 py-4 font-medium text-foreground">{item.name}</td>
@@ -163,10 +241,20 @@ export default function Ingredients() {
             <div><Label>Category</Label><Select value={formData.categoryId} onChange={(e:any) => setFormData({...formData, categoryId: Number(e.target.value)})}><option value={0}>Select Category</option>{categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></div>
           </div>
           <div className="grid grid-cols-3 gap-x-4 gap-y-5">
-            <div><Label>Stock UOM</Label><Input value={formData.stockUom} onChange={(e:any) => setFormData({...formData, stockUom: e.target.value})} placeholder="e.g. g" /></div>
-            <div><Label>Purchase UOM</Label><Input value={formData.purchaseUom} onChange={(e:any) => setFormData({...formData, purchaseUom: e.target.value})} placeholder="e.g. kg" /></div>
-            <div><Label>Recipe UOM</Label><Input value={formData.recipeUom} onChange={(e:any) => setFormData({...formData, recipeUom: e.target.value})} placeholder="e.g. g" /></div>
+            <div>
+              <Label>Stock UOM</Label>
+              <UomInput listId="uom-stock" value={formData.stockUom} onChange={(v) => setFormData({...formData, stockUom: v})} placeholder="e.g. g, ml, pcs" />
+            </div>
+            <div>
+              <Label>Purchase UOM</Label>
+              <UomInput listId="uom-purchase" value={formData.purchaseUom} onChange={(v) => setFormData({...formData, purchaseUom: v})} placeholder="e.g. kg, L, box" />
+            </div>
+            <div>
+              <Label>Recipe UOM</Label>
+              <UomInput listId="uom-recipe" value={formData.recipeUom} onChange={(v) => setFormData({...formData, recipeUom: v})} placeholder="e.g. g, ml, pcs" />
+            </div>
           </div>
+          <p className="text-[11px] text-muted-foreground -mt-2">Tip: For items counted by piece, use <span className="font-mono">pcs</span> or <span className="font-mono">nos</span> (e.g. "10 nos of lemon"). Set the conversion factor to <span className="font-mono">1</span> when stock and purchase UOM are both pieces.</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
             <div><Label>Conversion (Purch to Stock)</Label><Input type="number" value={formData.conversionFactor} onChange={(e:any) => setFormData({...formData, conversionFactor: Number(e.target.value)})} /><p className="text-[10px] text-muted-foreground mt-1">1 Purchase UOM = X Stock UOM</p></div>
             <div><Label>Est. Cost (Per Stock UOM)</Label><Input type="number" step="0.01" value={formData.currentCost} onChange={(e:any) => setFormData({...formData, currentCost: Number(e.target.value)})} /></div>

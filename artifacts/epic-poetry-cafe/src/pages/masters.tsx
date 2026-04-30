@@ -1161,11 +1161,22 @@ function POSIntegrationsTab() {
     setWebhookSecret(null);
     setCapabilities(null);
     setFetchResults(null);
-    setSelectedTypes({ sales: true, customers: true });
+    setSelectedTypes({});
     setFetchFrom(daysAgoIso(7));
     setFetchTo(todayIso());
     try { const s = await posApiFetch(`pos-integrations/${i.id}/stats`); setStats(s); } catch { setStats(null); }
-    try { const c = await posApiFetch(`pos-integrations/${i.id}/capabilities`); setCapabilities(c); } catch { setCapabilities(null); }
+    try {
+      const c = await posApiFetch(`pos-integrations/${i.id}/capabilities`);
+      setCapabilities(c);
+      // Default to first 2 supported types only — never auto-select unsupported ones,
+      // otherwise hidden state could submit data types the user cannot see/uncheck.
+      const supported: Record<string, boolean> = {};
+      const supportedKeys = (c?.dataTypes || []).filter((dt: any) => dt.status === 'supported').map((dt: any) => dt.key);
+      const defaults = ['sales', 'customers'].filter(k => supportedKeys.includes(k));
+      const picks = defaults.length ? defaults : supportedKeys.slice(0, 2);
+      picks.forEach((k: string) => { supported[k] = true; });
+      setSelectedTypes(supported);
+    } catch { setCapabilities(null); }
     loadSyncLogs(i.id);
   };
 

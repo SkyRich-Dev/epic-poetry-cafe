@@ -2589,6 +2589,10 @@ components:
           type: integer
         ingredientName:
           type: string
+        categoryId:
+          type: ["integer", "null"]
+        categoryName:
+          type: ["string", "null"]
         currentStock:
           type: number
         stockUom:

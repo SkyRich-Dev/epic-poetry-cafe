@@ -449,16 +449,22 @@ router.post("/pos-integrations/:id/fetch", authMiddleware, adminOnly, async (req
     res.status(400).json({ error: "Date range cannot exceed 90 days" }); return;
   }
 
-  if (integration.lastManualFetchAt) {
-    const elapsed = Date.now() - integration.lastManualFetchAt.getTime();
-    if (elapsed < FETCH_RATE_LIMIT_MS) {
-      const waitS = Math.ceil((FETCH_RATE_LIMIT_MS - elapsed) / 1000);
-      res.status(429).json({ error: `Please wait ${waitS}s before triggering another fetch on this integration` });
-      return;
-    }
+  // Atomic rate-limit acquisition: a single UPDATE...WHERE...RETURNING claims the slot.
+  // Concurrent requests cannot race past the gate because postgres serializes the row update.
+  const cutoff = new Date(Date.now() - FETCH_RATE_LIMIT_MS);
+  const claimed = await db.update(posIntegrationsTable)
+    .set({ lastManualFetchAt: new Date() })
+    .where(and(
+      eq(posIntegrationsTable.id, integration.id),
+      sql`(${posIntegrationsTable.lastManualFetchAt} IS NULL OR ${posIntegrationsTable.lastManualFetchAt} < ${cutoff})`,
+    ))
+    .returning({ id: posIntegrationsTable.id });
+  if (claimed.length === 0) {
+    const elapsed = integration.lastManualFetchAt ? Date.now() - integration.lastManualFetchAt.getTime() : 0;
+    const waitS = Math.max(1, Math.ceil((FETCH_RATE_LIMIT_MS - elapsed) / 1000));
+    res.status(429).json({ error: `Please wait ${waitS}s before triggering another fetch on this integration` });
+    return;
   }
-  await db.update(posIntegrationsTable).set({ lastManualFetchAt: new Date() })
-    .where(eq(posIntegrationsTable.id, integration.id));
 
   const userLabel = (req as any).user?.username || (req as any).user?.email || "admin";
   const results: Record<string, { status: string; count: number; errorCount: number; message: string }> = {};

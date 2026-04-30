@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { useGetStockOverview, useSaveStockSnapshot } from '@workspace/api-client-react';
-import { PageHeader, Button, Input, Modal, formatCurrency, Badge } from '../components/ui-extras';
-import { PackageSearch, AlertCircle, Save } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { useGetStockOverview, useSaveStockSnapshot, useListCategories } from '@workspace/api-client-react';
+import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge } from '../components/ui-extras';
+import { PackageSearch, AlertCircle, Save, Search } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 
@@ -9,11 +9,41 @@ export default function Inventory() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: stock, isLoading } = useGetStockOverview();
+  const { data: categories } = useListCategories({ type: 'ingredient' });
   const saveMut = useSaveStockSnapshot();
   
   const [isSnapshotOpen, setIsSnapshotOpen] = useState(false);
   const [snapshotDate, setSnapshotDate] = useState(new Date().toISOString().split('T')[0]);
   const [snapshotLines, setSnapshotLines] = useState<Record<number, number>>({});
+  const [search, setSearch] = useState('');
+  const [filterCategoryId, setFilterCategoryId] = useState<number | 'all' | 'low'>('all');
+  const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'stock-asc' | 'stock-desc' | 'category' | 'status'>('name-asc');
+
+  const filteredStock = useMemo(() => {
+    if (!stock) return [];
+    const q = search.trim().toLowerCase();
+    let rows = (stock as any[]).filter((s: any) => {
+      if (filterCategoryId === 'low') {
+        if (!s.lowStock) return false;
+      } else if (filterCategoryId !== 'all') {
+        if ((s.categoryId ?? null) !== filterCategoryId) return false;
+      }
+      if (!q) return true;
+      return s.ingredientName?.toLowerCase().includes(q);
+    });
+    rows = [...rows].sort((a: any, b: any) => {
+      switch (sortBy) {
+        case 'name-asc': return (a.ingredientName || '').localeCompare(b.ingredientName || '');
+        case 'name-desc': return (b.ingredientName || '').localeCompare(a.ingredientName || '');
+        case 'stock-asc': return (a.currentStock || 0) - (b.currentStock || 0);
+        case 'stock-desc': return (b.currentStock || 0) - (a.currentStock || 0);
+        case 'category': return (a.categoryName || 'zzzz').localeCompare(b.categoryName || 'zzzz') || (a.ingredientName || '').localeCompare(b.ingredientName || '');
+        case 'status': return Number(!!b.lowStock) - Number(!!a.lowStock) || (a.ingredientName || '').localeCompare(b.ingredientName || '');
+        default: return 0;
+      }
+    });
+    return rows;
+  }, [stock, search, filterCategoryId, sortBy]);
 
   const openSnapshot = () => {
     const initial: Record<number, number> = {};
@@ -41,11 +71,58 @@ export default function Inventory() {
         <Button onClick={openSnapshot}><PackageSearch size={18}/> End of Day Count</Button>
       </PageHeader>
 
+      <div className="flex flex-wrap items-end gap-3" data-testid="inventory-filters">
+        <div className="flex-1 min-w-[220px]">
+          <Label>Search</Label>
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <Input
+              data-testid="input-search-inventory"
+              className="pl-9"
+              placeholder="Search ingredient..."
+              value={search}
+              onChange={(e: any) => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="w-56">
+          <Label>Category</Label>
+          <Select
+            data-testid="select-filter-category"
+            value={String(filterCategoryId)}
+            onChange={(e: any) => {
+              const v = e.target.value;
+              setFilterCategoryId(v === 'all' || v === 'low' ? v : Number(v));
+            }}
+          >
+            <option value="all">All categories</option>
+            <option value="low">Low stock only</option>
+            {categories?.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+        </div>
+        <div className="w-56">
+          <Label>Sort by</Label>
+          <Select
+            data-testid="select-sort-by"
+            value={sortBy}
+            onChange={(e: any) => setSortBy(e.target.value as any)}
+          >
+            <option value="name-asc">Name (A &rarr; Z)</option>
+            <option value="name-desc">Name (Z &rarr; A)</option>
+            <option value="stock-asc">Stock (low &rarr; high)</option>
+            <option value="stock-desc">Stock (high &rarr; low)</option>
+            <option value="category">Category</option>
+            <option value="status">Status (low stock first)</option>
+          </Select>
+        </div>
+      </div>
+
       <div className="table-container">
         <table className="w-full text-sm text-left">
           <thead className="bg-muted text-muted-foreground border-b font-medium uppercase text-xs tracking-wider">
             <tr>
               <th className="px-6 py-4">Ingredient</th>
+              <th className="px-6 py-4">Category</th>
               <th className="px-6 py-4 text-right">Current Stock</th>
               <th className="px-6 py-4">UOM</th>
               <th className="px-6 py-4 text-right">Reorder Lvl</th>
@@ -53,14 +130,15 @@ export default function Inventory() {
               <th className="px-6 py-4 text-right">Stock Value</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-border" data-testid="inventory-table-body">
             {isLoading ? (
-              <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">Loading stock...</td></tr>
-            ) : stock?.length === 0 ? (
-               <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No ingredients found.</td></tr>
-            ) : stock?.map(s => (
+              <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">Loading stock...</td></tr>
+            ) : filteredStock.length === 0 ? (
+               <tr><td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">No ingredients match your filters.</td></tr>
+            ) : filteredStock.map((s: any) => (
               <tr key={s.ingredientId} className="table-row-hover">
                 <td className="px-6 py-4 font-medium text-foreground">{s.ingredientName}</td>
+                <td className="px-6 py-4 text-muted-foreground">{s.categoryName || '-'}</td>
                 <td className="px-6 py-4 text-right font-display font-semibold text-base">{s.currentStock.toFixed(2)}</td>
                 <td className="px-6 py-4 text-muted-foreground">{s.stockUom}</td>
                 <td className="px-6 py-4 text-right text-muted-foreground">{s.reorderLevel}</td>
