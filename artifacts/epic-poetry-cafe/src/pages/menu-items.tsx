@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useListMenuItems, useCreateMenuItem, useUpdateMenuItem, useGetRecipe, useSaveRecipe, useGetMenuItemCosting, useListIngredients, useListCategories } from '@workspace/api-client-react';
 import { PageHeader, Button, Input, Label, Select, Modal, formatCurrency, Badge, cn, VerifyButton, apiVerify, apiUnverify } from '../components/ui-extras';
-import { Plus, Edit, ChefHat, Tag, DollarSign, Calculator, Trash2, Pencil } from 'lucide-react';
+import { Plus, Edit, ChefHat, Tag, DollarSign, Calculator, Trash2, Pencil, Search, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -24,6 +24,29 @@ export default function MenuItems() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
   const [dupConfirm, setDupConfirm] = useState<{ message: string; kind: 'exact' | 'similar'; canConfirm: boolean; matches: any[] } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'no-recipe' | number>('all');
+
+  const hasRecipe = (item: any) => Number(item?.productionCost) > 0;
+
+  const totalCount = menuItems?.length || 0;
+  const withRecipeCount = (menuItems || []).filter(hasRecipe).length;
+  const withoutRecipeCount = totalCount - withRecipeCount;
+
+  const trimmedSearch = searchTerm.trim().toLowerCase();
+  const filteredMenuItems = (menuItems || []).filter((item: any) => {
+    if (trimmedSearch) {
+      const haystack = `${item.name || ''} ${item.categoryName || ''}`.toLowerCase();
+      if (!haystack.includes(trimmedSearch)) return false;
+    }
+    if (categoryFilter === 'no-recipe') {
+      if (hasRecipe(item)) return false;
+    } else if (typeof categoryFilter === 'number') {
+      if (item.categoryId !== categoryFilter) return false;
+    }
+    return true;
+  });
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -167,6 +190,79 @@ export default function MenuItems() {
         {!isViewer && <Button onClick={openCreate}><Plus size={18}/> Add Menu Item</Button>}
       </PageHeader>
 
+      {!isLoading && totalCount > 0 && (
+        <div
+          className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+          data-testid="menu-recipe-toolbar"
+        >
+          <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="menu-recipe-stats">
+            <Badge variant="neutral">
+              {totalCount} {totalCount === 1 ? 'menu item' : 'menu items'}
+            </Badge>
+            <Badge variant="success" data-testid="menu-with-recipe-count">
+              {withRecipeCount} with recipe
+            </Badge>
+            <Badge
+              variant={withoutRecipeCount > 0 ? 'danger' : 'neutral'}
+              data-testid="menu-without-recipe-count"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                {withoutRecipeCount > 0 && (
+                  <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />
+                )}
+                {withoutRecipeCount} without recipe
+              </span>
+            </Badge>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative">
+              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchTerm}
+                onChange={(e: any) => setSearchTerm(e.target.value)}
+                placeholder="Search menu or category…"
+                aria-label="Search menu items"
+                className="pl-8 pr-8 sm:w-64"
+                data-testid="menu-search-input"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label="Clear search"
+                  data-testid="menu-search-clear"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <Select
+              value={String(categoryFilter)}
+              onChange={(e: any) => {
+                const v = e.target.value;
+                if (v === 'all' || v === 'no-recipe') {
+                  setCategoryFilter(v);
+                } else {
+                  setCategoryFilter(Number(v));
+                }
+              }}
+              data-testid="menu-category-filter"
+              aria-label="Filter menu items by category"
+              className="sm:w-56"
+            >
+              <option value="all">All categories</option>
+              <option value="no-recipe">Only items without recipe</option>
+              {categories?.map((c: any) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+      )}
+
       <div className="table-container">
         <table className="w-full text-sm text-left">
           <thead className="bg-muted text-muted-foreground border-b font-medium uppercase text-xs tracking-wider">
@@ -186,9 +282,31 @@ export default function MenuItems() {
               <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground">Loading menu items...</td></tr>
             ) : menuItems?.length === 0 ? (
                <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground">No menu items found. Create your first one!</td></tr>
-            ) : menuItems?.map((item: any) => (
-              <tr key={item.id} className="table-row-hover">
-                <td className="px-6 py-4 font-medium text-foreground">{item.name}</td>
+            ) : filteredMenuItems.length === 0 ? (
+               <tr><td colSpan={isAdmin ? 8 : 6} className="px-6 py-8 text-center text-muted-foreground" data-testid="menu-no-results">No menu items match your search or filter.</td></tr>
+            ) : filteredMenuItems.map((item: any) => (
+              <tr
+                key={item.id}
+                className="table-row-hover"
+                data-testid={`menu-row-${item.id}`}
+                data-has-recipe={hasRecipe(item) ? 'yes' : 'no'}
+              >
+                <td className="px-6 py-4 font-medium text-foreground">
+                  <span className="inline-flex items-center gap-2">
+                    {!hasRecipe(item) && (
+                      <>
+                        <span
+                          className="inline-block h-2 w-2 rounded-full bg-red-500"
+                          title="No recipe added yet"
+                          aria-hidden="true"
+                          data-testid={`menu-no-recipe-dot-${item.id}`}
+                        />
+                        <span className="sr-only">No recipe added yet:</span>
+                      </>
+                    )}
+                    {item.name}
+                  </span>
+                </td>
                 <td className="px-6 py-4 text-muted-foreground">{item.categoryName || '-'}</td>
                 <td className="px-6 py-4 text-right font-medium">{formatCurrency(item.sellingPrice)}</td>
                 {isAdmin && <td className="px-6 py-4 text-right text-muted-foreground">{formatCurrency(item.productionCost)}</td>}
