@@ -262,16 +262,27 @@ R({ key: "sales-by-item", title: "Sales by Item", category: "Sales",
     const ids = inv.map(i => i.id);
     const lines = await db.select({
       menuItemId: salesInvoiceLinesTable.menuItemId,
-      itemName: salesInvoiceLinesTable.itemName,
+      itemName: salesInvoiceLinesTable.itemNameSnapshot,
       qty: salesInvoiceLinesTable.quantity,
       gross: salesInvoiceLinesTable.grossLineAmount,
       discount: salesInvoiceLinesTable.lineDiscountAmount,
       net: salesInvoiceLinesTable.finalLineAmount,
     }).from(salesInvoiceLinesTable).where(sql`${salesInvoiceLinesTable.invoiceId} IN (${sql.join(ids.map(id => sql`${id}`), sql`,`)})`);
+    // Fall back to live menu_items.name when the snapshot was never written
+    // (older rows) so the report is never blank or "Unknown".
+    const itemIds = Array.from(new Set(lines.map(l => l.menuItemId).filter((x): x is number => !!x)));
+    const itemNameMap = new Map<number, string>();
+    if (itemIds.length > 0) {
+      const items = await db.select({ id: menuItemsTable.id, name: menuItemsTable.name })
+        .from(menuItemsTable)
+        .where(sql`${menuItemsTable.id} IN (${sql.join(itemIds.map(id => sql`${id}`), sql`,`)})`);
+      for (const it of items) itemNameMap.set(it.id, it.name);
+    }
     const m = new Map<string, any>();
     for (const l of lines) {
-      const key = `${l.menuItemId || 0}::${l.itemName || ""}`;
-      const e = m.get(key) || { itemName: l.itemName || "Unknown", qty: 0, gross: 0, discount: 0, net: 0 };
+      const name = l.itemName || (l.menuItemId ? itemNameMap.get(l.menuItemId) : null) || "Unknown";
+      const key = `${l.menuItemId || 0}::${name}`;
+      const e = m.get(key) || { itemName: name, qty: 0, gross: 0, discount: 0, net: 0 };
       e.qty += l.qty; e.gross += l.gross; e.discount += l.discount; e.net += l.net;
       m.set(key, e);
     }
@@ -489,13 +500,22 @@ R({ key: "top-bottom-items", title: "Top / Bottom Items", category: "Sales",
     if (inv.length === 0) return { title: "Top / Bottom Items", columns: [], rows: [] };
     const ids = inv.map(i => i.id);
     const lines = await db.select({
-      itemName: salesInvoiceLinesTable.itemName,
+      menuItemId: salesInvoiceLinesTable.menuItemId,
+      itemName: salesInvoiceLinesTable.itemNameSnapshot,
       qty: salesInvoiceLinesTable.quantity,
       net: salesInvoiceLinesTable.finalLineAmount,
     }).from(salesInvoiceLinesTable).where(sql`${salesInvoiceLinesTable.invoiceId} IN (${sql.join(ids.map(id => sql`${id}`), sql`,`)})`);
+    const itemIds = Array.from(new Set(lines.map(l => l.menuItemId).filter((x): x is number => !!x)));
+    const itemNameMap = new Map<number, string>();
+    if (itemIds.length > 0) {
+      const items = await db.select({ id: menuItemsTable.id, name: menuItemsTable.name })
+        .from(menuItemsTable)
+        .where(sql`${menuItemsTable.id} IN (${sql.join(itemIds.map(id => sql`${id}`), sql`,`)})`);
+      for (const it of items) itemNameMap.set(it.id, it.name);
+    }
     const m = new Map<string, any>();
     for (const l of lines) {
-      const k = l.itemName || "Unknown";
+      const k = l.itemName || (l.menuItemId ? itemNameMap.get(l.menuItemId) : null) || "Unknown";
       const e = m.get(k) || { itemName: k, qty: 0, net: 0 };
       e.qty += l.qty; e.net += l.net;
       m.set(k, e);
