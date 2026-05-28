@@ -340,9 +340,9 @@ The system is a standalone web application designed for use by cafe owners, mana
 ### 3.14 POS Integration
 
 #### FR-POS-01: Petpooja Integration
-- Webhook endpoint for receiving POS sales data.
-- Automatic item mapping between Petpooja menu items and system menu items.
-- Admin UI for managing item mappings.
+- Webhook endpoint (`POST /api/webhook/petpooja/:integrationId`) for receiving live POS order events.
+- Items are resolved automatically by name match; unknown items and categories are auto-created from the webhook payload (codes prefixed `PP`). No manual item-mapping module.
+- Petpooja sales data is webhook-only — there is no manual Excel import path for Petpooja.
 
 #### FR-POS-02: General POS Integrations
 - Support for Petpooja, POSist, UrbanPiper, and custom POS providers.
@@ -354,7 +354,7 @@ The system is a standalone web application designed for use by cafe owners, mana
 ### 3.15 Bulk Data Import
 
 #### FR-UPL-01: Excel Upload
-- Supported import types: sales, purchases, expenses, sales invoices, Petpooja data.
+- Supported import types: sales invoices, purchases, expenses, menu items with recipes, ingredients, vendors, customers, categories. Petpooja sales are NOT imported via Excel — they flow through the live webhook only.
 - Row-by-row validation with error reporting.
 - Name-matching for vendors, ingredients, and menu items.
 - Future date prevention on all imported dates.
@@ -479,7 +479,6 @@ categories ──< ingredients ──< purchase_lines >── purchases >── 
                     └──< ingredient_vendor_mapping
 
 menu_items ──< sales_invoice_lines >── sales_invoices
-menu_items ──< petpooja_item_mappings
 
 employees ──< attendance
 employees ──< leaves

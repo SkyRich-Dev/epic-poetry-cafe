@@ -1069,7 +1069,7 @@ async function posApiFetch(path: string, opts?: any) {
 }
 
 const PROVIDERS = [
-  { value: 'petpooja', label: 'Petpooja', description: 'POS system with order sync, item mapping, and Excel/API import' },
+  { value: 'petpooja', label: 'Petpooja', description: 'POS system with real-time order webhook and API sync' },
   { value: 'posist', label: 'POSist', description: 'Cloud-based POS with menu sync and order push' },
   { value: 'urbanpiper', label: 'UrbanPiper', description: 'Aggregator middleware for Swiggy/Zomato/direct orders' },
   { value: 'custom', label: 'Custom / Generic', description: 'Generic webhook-based integration for any POS system' },

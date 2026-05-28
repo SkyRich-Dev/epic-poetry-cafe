@@ -9,7 +9,6 @@ type UploadType =
   | 'expenses'
   | 'menu'
   | 'ingredients'
-  | 'petpooja'
   | 'vendors'
   | 'customers'
   | 'categories';
@@ -64,11 +63,6 @@ const UPLOAD_CONFIGS: Record<UploadType, {
     description: 'Upload ingredients (raw materials). Existing ingredients are matched by Name and updated; new ones get an auto-generated code. Categories are auto-created if missing.',
     columns: ['Name', 'Code (optional)', 'Category', 'Description', 'Stock_UOM', 'Purchase_UOM', 'Recipe_UOM', 'Conversion_Factor', 'Current_Cost', 'Reorder_Level', 'Current_Stock', 'Perishable', 'Shelf_Life_Days', 'Active'],
     dedupe: { entityLabel: 'ingredient', entityPlural: 'ingredients', groupLabel: 'category' },
-  },
-  petpooja: {
-    label: 'Petpooja Import',
-    description: 'Import Petpooja sales data. Items are matched by name — new items and categories are auto-created with price if they don\'t exist.',
-    columns: ['Date', 'Order_ID', 'Time', 'Order_Type', 'Customer', 'Item (name)', 'Category', 'Price', 'Quantity', 'GST_Percent', 'Discount', 'Payment_Mode'],
   },
   vendors: {
     label: 'Vendors Master',

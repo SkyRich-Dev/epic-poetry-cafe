@@ -688,171 +688,9 @@ router.post("/upload/sales-invoices", authMiddleware, handleUpload, async (req, 
   res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results });
 });
 
-router.post("/upload/petpooja", authMiddleware, handleUpload, async (req, res): Promise<void> => {
-  if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
-
-  const { rows, error } = safeParseFile(req.file.buffer);
-  if (error) { res.status(400).json({ error }); return; }
-  if (rows.length === 0) { res.status(400).json({ error: "Empty file or no data rows found" }); return; }
-
-  const menuItems = await db.select().from(menuItemsTable);
-  const menuByName = new Map(menuItems.map(m => [m.name.toLowerCase().trim(), m]));
-  const allCategories = await db.select().from(categoriesTable);
-  const categoryByName = new Map(allCategories.map(c => [c.name.toLowerCase().trim(), c]));
-  const autoCreated: string[] = [];
-
-  const grouped = new Map<string, {
-    salesDate: string; invoiceNo: string; invoiceTime: string; orderType: string;
-    customerName: string; customerPhone: string; paymentMode: string; totalDiscount: number;
-    lines: { menuItemId: number; menuItemName: string; menuItemCode: string; fixedPrice: number; quantity: number; gstPercent: number; rowIndex: number }[];
-  }>();
-  const results: { row: number; status: string; error?: string; data?: any }[] = [];
-
-  for (let i = 0; i < rows.length; i++) {
-    const raw = normalizeRow(rows[i]);
-    try {
-      const salesDate = toDateStr(raw.date || raw.order_date || raw.sales_date);
-      if (isFutureDate(salesDate)) { results.push({ row: i + 2, status: "error", error: `Date cannot be in the future (${salesDate}). Today is ${getTodayISO()}.` }); continue; }
-      const invoiceNo = String(raw.order_id || raw.invoice_no || raw.order_no || raw.invoice || "").trim();
-      const invoiceTime = String(raw.time || raw.order_time || "").trim();
-      const orderType = String(raw.order_type || raw.type || "dine-in").toLowerCase().replace(/\s+/g, "-");
-      const customerName = String(raw.customer || raw.customer_name || "").trim();
-      const customerPhone = String(raw.phone || raw.customer_phone || raw.mobile || raw.contact || "").trim();
-      const paymentMode = String(raw.payment_mode || raw.payment || "cash").toLowerCase().trim();
-      const totalDiscount = toNum(raw.discount || raw.total_discount || 0);
-
-      const ppItemName = String(raw.item || raw.item_name || raw.menu_item || "").trim();
-      const ppCategoryName = String(raw.category || raw.category_name || "").trim();
-      const quantity = toNum(raw.quantity || raw.qty);
-      const price = toNum(raw.price || raw.rate || raw.selling_price || 0);
-      const gstPercent = toNum(raw.gst_percent || raw.gst || raw.tax || 5);
-
-      if (!ppItemName) { results.push({ row: i + 2, status: "error", error: "Item name is required" }); continue; }
-      if (quantity <= 0) { results.push({ row: i + 2, status: "error", error: "Quantity must be > 0" }); continue; }
-
-      let menuItem = menuByName.get(ppItemName.toLowerCase().trim());
-
-      if (!menuItem) {
-        let categoryId: number | null = null;
-        if (ppCategoryName) {
-          let category = categoryByName.get(ppCategoryName.toLowerCase().trim());
-          if (!category) {
-            const [newCat] = await db.insert(categoriesTable).values({ name: ppCategoryName, type: "menu" }).returning();
-            category = newCat;
-            categoryByName.set(ppCategoryName.toLowerCase().trim(), category);
-            autoCreated.push(`Category: ${ppCategoryName}`);
-          }
-          categoryId = category.id;
-        }
-        const code = await generateCode("PP", "menu_items");
-        const [newItem] = await db.insert(menuItemsTable).values({
-          code, name: ppItemName, categoryId, sellingPrice: price, active: true,
-        }).returning();
-        menuItem = newItem;
-        menuByName.set(ppItemName.toLowerCase().trim(), menuItem);
-        autoCreated.push(`Menu Item: ${ppItemName} (${code}) @ ₹${price}`);
-      }
-
-      const groupKey = `${salesDate}_${invoiceNo || `row${i}`}`;
-      if (!grouped.has(groupKey)) {
-        grouped.set(groupKey, { salesDate, invoiceNo, invoiceTime, orderType, customerName, customerPhone, paymentMode, totalDiscount, lines: [] });
-      }
-      grouped.get(groupKey)!.lines.push({
-        menuItemId: menuItem.id, menuItemName: menuItem.name, menuItemCode: menuItem.code || '',
-        fixedPrice: menuItem.sellingPrice, quantity, gstPercent, rowIndex: i + 2,
-      });
-    } catch (e: any) {
-      logger.error({ err: e, row: i + 2 }, "Petpooja upload row parse error");
-      results.push({ row: i + 2, status: "error", error: safeErrorMessage(e) });
-    }
-  }
-
-  let successCount = 0;
-
-  const [batch] = await db.insert(salesImportBatchesTable).values({
-    sourceType: "petpooja", fileName: req.file.originalname, invoiceCount: grouped.size,
-    lineCount: rows.length, successCount: 0, failedCount: 0, matchedCount: 0, mismatchedCount: 0,
-    uploadedBy: (req as any).userId,
-  }).returning();
-
-  for (const [, group] of grouped) {
-    try {
-      let grossAmount = 0;
-      for (const l of group.lines) { grossAmount += l.quantity * l.fixedPrice; }
-      const invoiceDiscount = group.totalDiscount;
-      const hasDiscount = invoiceDiscount > 0;
-
-      const finalLines: any[] = [];
-      let totalGst = 0;
-      for (const pl of group.lines) {
-        const lineGross = pl.quantity * pl.fixedPrice;
-        const allocatedDiscount = hasDiscount && grossAmount > 0 ? Math.round((lineGross / grossAmount) * invoiceDiscount * 100) / 100 : 0;
-        const discountedGross = lineGross - allocatedDiscount;
-        const discountedUnitPrice = hasDiscount ? (pl.quantity > 0 ? discountedGross / pl.quantity : 0) : pl.fixedPrice;
-        const taxableAmount = discountedGross;
-        const gstAmt = taxableAmount * (pl.gstPercent / 100);
-        const finalAmount = taxableAmount + gstAmt;
-        totalGst += gstAmt;
-
-        finalLines.push({
-          menuItemId: pl.menuItemId, itemCodeSnapshot: pl.menuItemCode, itemNameSnapshot: pl.menuItemName,
-          quantity: pl.quantity, fixedPrice: pl.fixedPrice, grossLineAmount: Math.round(lineGross * 100) / 100,
-          lineDiscountAmount: Math.round(allocatedDiscount * 100) / 100, discountedUnitPrice: Math.round(discountedUnitPrice * 100) / 100,
-          taxableLineAmount: Math.round(taxableAmount * 100) / 100, gstPercent: pl.gstPercent,
-          gstAmount: Math.round(gstAmt * 100) / 100, finalLineAmount: Math.round(finalAmount * 100) / 100,
-        });
-      }
-
-      const lineFinalTotal = finalLines.reduce((s, l) => s + l.finalLineAmount, 0);
-      const taxableTotal = finalLines.reduce((s, l) => s + l.taxableLineAmount, 0);
-      const invNo = group.invoiceNo ? `PP-${group.invoiceNo}` : `PP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
-
-      const __cust_pp = await upsertCustomerFromInvoice({
-        customerName: group.customerName || null,
-        customerPhone: group.customerPhone || null,
-        salesDate: group.salesDate,
-        finalAmount: lineFinalTotal,
-      });
-
-      await db.transaction(async (tx) => {
-        const [invoice] = await tx.insert(salesInvoicesTable).values({
-          salesDate: group.salesDate, invoiceNo: invNo, invoiceTime: group.invoiceTime || null,
-          sourceType: "petpooja", orderType: group.orderType, customerName: group.customerName || null,
-          customerPhone: __cust_pp.customerPhone, customerId: __cust_pp.customerId,
-          grossAmount: Math.round(grossAmount * 100) / 100, totalDiscount: Math.round(invoiceDiscount * 100) / 100,
-          taxableAmount: Math.round(taxableTotal * 100) / 100, gstAmount: Math.round(totalGst * 100) / 100,
-          finalAmount: Math.round(lineFinalTotal * 100) / 100, paymentMode: group.paymentMode,
-          importBatchId: batch.id, matchStatus: "matched", matchDifference: 0,
-          createdBy: (req as any).userId,
-        }).returning();
-
-        for (const fl of finalLines) {
-          await tx.insert(salesInvoiceLinesTable).values({ invoiceId: invoice.id, ...fl });
-        }
-      });
-
-      await deductStockForSalesLines(finalLines);
-      if (__cust_pp.customerId) await recomputeCustomerStats(__cust_pp.customerId);
-
-      for (const l of group.lines) {
-        successCount++;
-        results.push({ row: l.rowIndex, status: "success", data: { invoiceNo: invNo, item: l.menuItemName, qty: l.quantity } });
-      }
-    } catch (e: any) {
-      logger.error({ err: e }, "Petpooja upload transaction error");
-      for (const l of group.lines) {
-        results.push({ row: l.rowIndex, status: "error", error: safeErrorMessage(e) });
-      }
-    }
-  }
-
-  await db.update(salesImportBatchesTable).set({
-    successCount, failedCount: rows.length - successCount,
-  }).where(eq(salesImportBatchesTable.id, batch.id));
-
-  await createAuditLog("sales_invoices", batch.id, "import", null, { source: "petpooja", file: req.file.originalname, total: rows.length, success: successCount, autoCreated });
-  res.json({ totalRows: rows.length, successCount, errorCount: rows.length - successCount, results, autoCreated: autoCreated.length > 0 ? autoCreated : undefined });
-});
+// NOTE: The /upload/petpooja Excel route was removed — Petpooja data now flows
+// through the live webhook POST /api/webhook/petpooja/:integrationId and the
+// POS integrations module. Manual Excel import was a legacy duplicate.
 
 router.post("/upload/ingredients", authMiddleware, handleUpload, async (req, res): Promise<void> => {
   if (!req.file) { res.status(400).json({ error: "No file uploaded" }); return; }
@@ -1550,11 +1388,6 @@ router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<v
       headers = ["Date", "Invoice_No", "Time", "Order_Type", "Customer", "Item", "Quantity", "GST_Percent", "Discount", "Payment_Mode", "GST_Inclusive"];
       sampleRow = ["2026-03-30", "INV-001", "10:30", "dine-in", "John", "Cappuccino", 2, 5, 0, "cash", "true"];
       break;
-    case "petpooja":
-      sheetName = "Petpooja_Sales";
-      headers = ["Date", "Order_ID", "Time", "Order_Type", "Customer", "Item", "Category", "Price", "Quantity", "GST_Percent", "Discount", "Payment_Mode"];
-      sampleRow = ["2026-03-30", "PP-1234", "10:30", "dine-in", "Walk-in", "Cappuccino", "Beverages", 180, 2, 5, 0, "cash"];
-      break;
     case "vendors":
       sheetName = "Vendors";
       headers = ["Name", "Code", "Category", "Contact_Person", "Mobile", "Email", "Address", "GST_Number", "Payment_Terms", "Credit_Days", "Preferred", "Active", "Remarks"];
@@ -1571,7 +1404,7 @@ router.get("/upload/template/:type", authMiddleware, async (req, res): Promise<v
       sampleRow = ["Beverages", "menu", "Hot and cold drinks", "true", 1];
       break;
     default:
-      res.status(400).json({ error: "Invalid template type. Use: ingredients, purchases, expenses, menu, sales-invoices, petpooja, vendors, customers, or categories" });
+      res.status(400).json({ error: "Invalid template type. Use: ingredients, purchases, expenses, menu, sales-invoices, vendors, customers, or categories" });
       return;
   }
 
